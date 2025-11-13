@@ -69,22 +69,11 @@ impl TemplateApp {
         // Apply the fonts to the context
         cc.egui_ctx.set_fonts(fonts);
 
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
-        } else {
-            Default::default()
-        }
+        Default::default()
     }
 }
 
 impl eframe::App for TemplateApp {
-    /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Right sidebar
@@ -99,7 +88,6 @@ impl eframe::App for TemplateApp {
 
         // Bottom bar
         egui::TopBottomPanel::bottom("bottom_panel")
-            .resizable(true)
             .default_height(100.0)
             .show(ctx, |ui| {
                 ui.heading("Bottom Bar");
@@ -126,9 +114,7 @@ impl eframe::App for TemplateApp {
                 let letter_height = letter_galley.size().y;
                 let letter_size = letter_width.max(letter_height);
 
-                // Add padding around the letter for the button
-                let padding = ui.spacing().button_padding;
-                self.button_size = Some(letter_size + padding.x * 2.0);
+                self.button_size = Some(letter_size);
             }
 
             let button_size = self.button_size.unwrap();
@@ -154,9 +140,6 @@ impl eframe::App for TemplateApp {
             let center_row = self.grid_rows / 2;
             let center_col = self.grid_cols / 2;
 
-            // Store original spacing to restore later
-            let original_spacing = ui.spacing().clone();
-
             // Set spacing to zero for the grid
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
@@ -176,8 +159,7 @@ impl eframe::App for TemplateApp {
 
                                 let button = egui::Button::new(button_text)
                                     .min_size(egui::vec2(button_size, button_size))
-                                    .rounding(0.0); // No rounding - sharp corners
-
+                                    .corner_radius(0.0);
                                 if ui.add(button).clicked() {
                                     println!("Button clicked at row: {}, col: {}", row, col);
                                 }
@@ -186,13 +168,31 @@ impl eframe::App for TemplateApp {
                     }
                 });
             });
-
-            // Restore original spacing
-            *ui.spacing_mut() = original_spacing;
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                egui::warn_if_debug_build(ui);
-            });
         });
     }
+}
+
+struct Entity(u32);
+struct EntityGenerator(u32);
+
+impl EntityGenerator {
+    fn default() -> Self {
+        EntityGenerator(0)
+    }
+
+    fn new_entity(&mut self) -> Entity {
+        self.0 += 1;
+
+        Entity(self.0.clone())
+    }
+}
+struct Point {
+    x: u32,
+    y: u32,
+}
+struct PointEntityMap(rustc_hash::FxHashMap<Point, Entity>);
+
+struct GameWorld {
+    pemap: PointEntityMap,
+    player: Entity,
 }
