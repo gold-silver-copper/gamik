@@ -167,7 +167,7 @@ impl eframe::App for TemplateApp {
                 let letter_size = letter_width.max(letter_height);
 
                 // Minimal padding for tight roguelike feel
-                let padding = 0.0;
+                let padding = -4.0;
                 self.button_size = Some(letter_size + padding);
             }
 
