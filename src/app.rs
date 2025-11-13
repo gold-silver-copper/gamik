@@ -6,13 +6,16 @@ pub struct TemplateApp {
     grid_cols: usize,
     #[serde(skip)]
     grid_rows: usize,
+    #[serde(skip)]
+    button_size: Option<f32>,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            grid_cols: 1, // Will be recalculated
-            grid_rows: 1, // Will be recalculated
+            grid_cols: 1,      // Will be recalculated
+            grid_rows: 1,      // Will be recalculated
+            button_size: None, // Will be calculated on first frame
         }
     }
 }
@@ -65,6 +68,7 @@ impl TemplateApp {
 
         // Apply the fonts to the context
         cc.egui_ctx.set_fonts(fonts);
+
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
@@ -105,32 +109,37 @@ impl eframe::App for TemplateApp {
 
         // Central panel with letter grid
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Calculate button size on first frame if not already calculated
+            if self.button_size.is_none() {
+                let chinese_char = "中";
+                let font_id = egui::TextStyle::Button.resolve(ui.style());
+                let letter_galley = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(
+                        chinese_char.to_string(),
+                        font_id.clone(),
+                        egui::Color32::WHITE,
+                    )
+                });
+
+                // Get letter dimensions - use the larger dimension to make square buttons
+                let letter_width = letter_galley.size().x;
+                let letter_height = letter_galley.size().y;
+                let letter_size = letter_width.max(letter_height);
+
+                // Add padding around the letter for the button
+                let padding = ui.spacing().button_padding;
+                self.button_size = Some(letter_size + padding.x * 2.0);
+            }
+
+            let button_size = self.button_size.unwrap();
+
             // Chinese character to display
             let chinese_char = "中"; // "zhong" - meaning "middle" or "China"
-
-            // Get the font and calculate letter size
-            let font_id = egui::TextStyle::Button.resolve(ui.style());
-            let letter_galley = ui.fonts_mut(|f| {
-                f.layout_no_wrap(
-                    chinese_char.to_string(),
-                    font_id.clone(),
-                    egui::Color32::WHITE,
-                )
-            });
-
-            // Get letter dimensions - use the larger dimension to make square buttons
-            let letter_width = letter_galley.size().x;
-            let letter_height = letter_galley.size().y;
-            let letter_size = letter_width.max(letter_height);
-
-            // Add padding around the letter for the button
-            let padding = ui.spacing().button_padding;
-            let button_size = letter_size + padding.x * 2.0;
 
             // Calculate available space
             let available_size = ui.available_size();
 
-            // Calculate maximum number of buttons that can fit (no longer need square grid)
+            // Calculate maximum number of buttons that can fit
             let max_cols = (available_size.x / button_size).floor() as usize;
             let max_rows = (available_size.y / button_size).floor() as usize;
 
@@ -140,6 +149,10 @@ impl eframe::App for TemplateApp {
             // Use all available space
             self.grid_cols = max_cols.max(1); // At least 1 column
             self.grid_rows = max_rows.max(1); // At least 1 row
+
+            // Calculate center position
+            let center_row = self.grid_rows / 2;
+            let center_col = self.grid_cols / 2;
 
             // Store original spacing to restore later
             let original_spacing = ui.spacing().clone();
@@ -154,7 +167,14 @@ impl eframe::App for TemplateApp {
                     for row in 0..self.grid_rows {
                         ui.horizontal(|ui| {
                             for col in 0..self.grid_cols {
-                                let button = egui::Button::new(chinese_char)
+                                // Use @ sign for center button, Chinese character for others
+                                let button_text = if row == center_row && col == center_col {
+                                    "@"
+                                } else {
+                                    chinese_char
+                                };
+
+                                let button = egui::Button::new(button_text)
                                     .min_size(egui::vec2(button_size, button_size))
                                     .rounding(0.0); // No rounding - sharp corners
 
