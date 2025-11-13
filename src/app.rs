@@ -3,13 +3,16 @@
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     #[serde(skip)] // Recalculate on startup
-    grid_size: usize,
+    grid_cols: usize,
+    #[serde(skip)]
+    grid_rows: usize,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            grid_size: 1, // Will be recalculated
+            grid_cols: 1, // Will be recalculated
+            grid_rows: 1, // Will be recalculated
         }
     }
 }
@@ -37,6 +40,27 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Right sidebar
+        egui::SidePanel::right("right_panel")
+            .resizable(true)
+            .default_width(200.0)
+            .show(ctx, |ui| {
+                ui.heading("Right Sidebar");
+                ui.separator();
+                ui.label("Sidebar content here");
+            });
+
+        // Bottom bar
+        egui::TopBottomPanel::bottom("bottom_panel")
+            .resizable(true)
+            .default_height(100.0)
+            .show(ctx, |ui| {
+                ui.heading("Bottom Bar");
+                ui.separator();
+                ui.label("Bottom bar content here");
+            });
+
+        // Central panel with letter grid
         egui::CentralPanel::default().show(ctx, |ui| {
             // Get the font and calculate letter size
             let font_id = egui::TextStyle::Button.resolve(ui.style());
@@ -56,26 +80,33 @@ impl eframe::App for TemplateApp {
             // Calculate available space
             let available_size = ui.available_size();
 
-            // Calculate maximum number of buttons that can fit
+            // Calculate maximum number of buttons that can fit (no longer need square grid)
             let max_cols = (available_size.x / button_size).floor() as usize;
             let max_rows = (available_size.y / button_size).floor() as usize;
 
             println!("max cols: {max_cols}");
-
             println!("max rows: {max_rows}");
-            // Use the smaller dimension to maintain a square grid
-            let grid_size = max_cols.min(max_rows).max(1); // At least 1x1
-            self.grid_size = grid_size;
+
+            // Use all available space
+            self.grid_cols = max_cols.max(1); // At least 1 column
+            self.grid_rows = max_rows.max(1); // At least 1 row
+
+            // Store original spacing to restore later
+            let original_spacing = ui.spacing().clone();
+
+            // Set spacing to zero for the grid
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
             // Center the grid
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
                     // Create the grid
-                    for row in 0..self.grid_size {
+                    for row in 0..self.grid_rows {
                         ui.horizontal(|ui| {
-                            for col in 0..self.grid_size {
+                            for col in 0..self.grid_cols {
                                 let button = egui::Button::new("A")
-                                    .min_size(egui::vec2(button_size, button_size));
+                                    .min_size(egui::vec2(button_size, button_size))
+                                    .rounding(0.0); // No rounding - sharp corners
 
                                 if ui.add(button).clicked() {
                                     println!("Button clicked at row: {}, col: {}", row, col);
@@ -85,6 +116,9 @@ impl eframe::App for TemplateApp {
                     }
                 });
             });
+
+            // Restore original spacing
+            *ui.spacing_mut() = original_spacing;
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 egui::warn_if_debug_build(ui);
