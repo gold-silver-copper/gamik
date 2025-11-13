@@ -20,8 +20,51 @@ impl Default for TemplateApp {
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+        // Include font files at compile time
+        const SC_FONT_DATA: &[u8] = include_bytes!("../assets/fonts/noto-sc-regular.ttf");
+        const TC_FONT_DATA: &[u8] = include_bytes!("../assets/fonts/noto-tc-regular.ttf");
+
+        // Load Chinese font
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "sc_font".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(SC_FONT_DATA)),
+        );
+        fonts.font_data.insert(
+            "tc_font".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(TC_FONT_DATA)),
+        );
+
+        // Put sc_font first (highest priority):
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .insert(0, "sc_font".to_owned());
+
+        // Add tc_font as well
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .insert(1, "tc_font".to_owned());
+
+        // Set fonts for monospace text
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "sc_font".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(1, "tc_font".to_owned());
+
+        // Apply the fonts to the context
+        cc.egui_ctx.set_fonts(fonts);
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
@@ -62,10 +105,17 @@ impl eframe::App for TemplateApp {
 
         // Central panel with letter grid
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Chinese character to display
+            let chinese_char = "中"; // "zhong" - meaning "middle" or "China"
+
             // Get the font and calculate letter size
             let font_id = egui::TextStyle::Button.resolve(ui.style());
             let letter_galley = ui.fonts_mut(|f| {
-                f.layout_no_wrap("A".to_string(), font_id.clone(), egui::Color32::WHITE)
+                f.layout_no_wrap(
+                    chinese_char.to_string(),
+                    font_id.clone(),
+                    egui::Color32::WHITE,
+                )
             });
 
             // Get letter dimensions - use the larger dimension to make square buttons
@@ -104,7 +154,7 @@ impl eframe::App for TemplateApp {
                     for row in 0..self.grid_rows {
                         ui.horizontal(|ui| {
                             for col in 0..self.grid_cols {
-                                let button = egui::Button::new("A")
+                                let button = egui::Button::new(chinese_char)
                                     .min_size(egui::vec2(button_size, button_size))
                                     .rounding(0.0); // No rounding - sharp corners
 
