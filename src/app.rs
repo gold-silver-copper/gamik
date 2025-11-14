@@ -5,7 +5,6 @@ pub struct TemplateApp {
     grid_rows: usize,
     button_size: Option<f32>,
     world: GameWorld,
-    event_queue: Vec<GameEvent>,
     font_size: f32,
 }
 
@@ -16,7 +15,6 @@ impl Default for TemplateApp {
             grid_rows: 1,      // Will be recalculated
             button_size: None, // Will be calculated on first frame
             world: GameWorld::create_test_world(),
-            event_queue: Vec::new(),
             font_size: 20.0, // Default font size
         }
     }
@@ -75,7 +73,7 @@ impl TemplateApp {
     }
 
     fn process_events(&mut self) {
-        let events: Vec<GameEvent> = self.event_queue.drain(..).collect();
+        let events: Vec<GameEvent> = self.world.event_queue.drain(..).collect();
 
         for event in events {
             match event {
@@ -93,25 +91,30 @@ impl eframe::App for TemplateApp {
         // Handle keyboard input
         ctx.input(|i| {
             if i.key_pressed(egui::Key::W) || i.key_pressed(egui::Key::ArrowUp) {
-                self.event_queue.push(GameEvent::Move {
+                self.world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Up,
                 });
             }
+
+            if i.key_pressed(egui::Key::Q) {
+                panic!();
+            }
+
             if i.key_pressed(egui::Key::S) || i.key_pressed(egui::Key::ArrowDown) {
-                self.event_queue.push(GameEvent::Move {
+                self.world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Down,
                 });
             }
             if i.key_pressed(egui::Key::A) || i.key_pressed(egui::Key::ArrowLeft) {
-                self.event_queue.push(GameEvent::Move {
+                self.world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Left,
                 });
             }
             if i.key_pressed(egui::Key::D) || i.key_pressed(egui::Key::ArrowRight) {
-                self.event_queue.push(GameEvent::Move {
+                self.world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Right,
                 });
@@ -143,7 +146,7 @@ impl eframe::App for TemplateApp {
         // Central panel with letter grid
         egui::CentralPanel::default().show(ctx, |ui| {
             // Customize button styling for tighter spacing
-            let mut style = ui.style_mut();
+            let style = ui.style_mut();
             style.spacing.button_padding = egui::vec2(0.0, 0.0);
             style.visuals.widgets.inactive.bg_stroke.width = 0.0;
             style.visuals.widgets.hovered.bg_stroke.width = 0.0;
@@ -172,9 +175,6 @@ impl eframe::App for TemplateApp {
             }
 
             let button_size = self.button_size.unwrap();
-
-            // Chinese character to display
-            let chinese_char = "中"; // "zhong" - meaning "middle" or "China"
 
             // Calculate available space
             let available_size = ui.available_size();
@@ -340,6 +340,9 @@ struct GameWorld {
     spatial: SpatialWorld,
     player: Entity,
     entity_types: EntityTypeMap,
+
+    event_queue: Vec<GameEvent>,
+
     entity_gen: EntityGenerator,
 }
 
@@ -422,6 +425,9 @@ impl GameWorld {
         GameWorld {
             spatial,
             player,
+
+            event_queue: Vec::new(),
+
             entity_types,
             entity_gen,
         }
@@ -437,11 +443,11 @@ impl GameWorld {
             if let Some(&entity) = entities.first() {
                 return match self.entity_types.get(&entity) {
                     Some(EntityType::Player) => "@",
-                    Some(EntityType::Tree) => "🌲",
+                    Some(EntityType::Tree) => "木",
                     None => "?",
                 };
             }
         }
-        "中"
+        ","
     }
 }
