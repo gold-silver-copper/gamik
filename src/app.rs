@@ -71,24 +71,29 @@ impl TemplateApp {
 
         Default::default()
     }
-
-    fn process_events(&mut self) {
-        let events: Vec<GameEvent> = self.world.event_queue.drain(..).collect();
-
-        for event in events {
-            match event {
-                GameEvent::Move { entity, direction } => {
-                    self.world.move_entity(entity, direction);
-                }
-            }
-        }
-    }
 }
 
 impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle keyboard input
+
+        self.input(ctx);
+        // Process all events
+        self.world.process_events();
+
+        // Right sidebar
+        self.right_panel(ctx);
+
+        // Bottom bar
+        self.bottom_panel(ctx);
+        // Central panel with letter grid
+        self.rogue_screen(ctx);
+    }
+}
+
+impl TemplateApp {
+    pub fn input(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
             if i.key_pressed(egui::Key::W) || i.key_pressed(egui::Key::ArrowUp) {
                 self.world.event_queue.push(GameEvent::Move {
@@ -120,11 +125,8 @@ impl eframe::App for TemplateApp {
                 });
             }
         });
-
-        // Process all events
-        self.process_events();
-
-        // Right sidebar
+    }
+    pub fn right_panel(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("right_panel")
             .resizable(true)
             .default_width(200.0)
@@ -133,8 +135,9 @@ impl eframe::App for TemplateApp {
                 ui.separator();
                 ui.label("Sidebar content here");
             });
+    }
 
-        // Bottom bar
+    pub fn bottom_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("bottom_panel")
             .default_height(100.0)
             .show(ctx, |ui| {
@@ -142,8 +145,9 @@ impl eframe::App for TemplateApp {
                 ui.separator();
                 ui.label("Bottom bar content here");
             });
+    }
 
-        // Central panel with letter grid
+    fn rogue_screen(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Customize button styling for tighter spacing
             let style = ui.style_mut();
@@ -182,9 +186,6 @@ impl eframe::App for TemplateApp {
             // Calculate maximum number of buttons that can fit
             let max_cols = (available_size.x / button_size).floor() as usize;
             let max_rows = (available_size.y / button_size).floor() as usize;
-
-            println!("max cols: {max_cols}");
-            println!("max rows: {max_rows}");
 
             // Use all available space
             self.grid_cols = max_cols.max(1); // At least 1 column

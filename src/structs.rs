@@ -204,6 +204,17 @@ impl GameWorld {
         self.spatial.move_entity(entity, direction);
     }
 
+    pub fn process_events(&mut self) {
+        let events: Vec<GameEvent> = self.event_queue.drain(..).collect();
+
+        for event in events {
+            match event {
+                GameEvent::Move { entity, direction } => {
+                    self.move_entity(entity, direction);
+                }
+            }
+        }
+    }
     pub fn get_display_char(&self, point: &Point) -> &str {
         if let Some(entities) = self.spatial.pemap.get(point) {
             // Display the first entity at this position
