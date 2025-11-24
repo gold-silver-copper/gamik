@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Entity(u32);
+pub struct Entity(pub u32);
 
 pub struct EntityGenerator(u32);
 
@@ -16,8 +16,8 @@ impl EntityGenerator {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Point {
-    pub x: u32,
-    pub y: u32,
+    pub x: i32,
+    pub y: i32,
 }
 
 pub struct PointEntityMap(rustc_hash::FxHashMap<Point, Vec<Entity>>);
@@ -118,6 +118,10 @@ pub struct SpatialWorld {
     epmap: EntityPointMap,
 }
 
+pub struct ClientInfoPacket {
+    map_vec: Vec<(Point, Entity, EntityType)>,
+}
+
 impl SpatialWorld {
     fn new() -> Self {
         SpatialWorld {
@@ -203,7 +207,25 @@ impl GameWorld {
     pub fn move_entity(&mut self, entity: Entity, direction: Direction) {
         self.spatial.move_entity(entity, direction);
     }
+    pub fn send_client_info(&self, entity: Entity) -> ClientInfoPacket {
+        let radius = 20;
+        let mut map_vec = Vec::new();
+        if let Some(ent_pos) = self.spatial.epmap.get(&entity) {
+            for x in (ent_pos.x - radius)..=(ent_pos.x + radius) {
+                for y in (ent_pos.y - radius)..=(ent_pos.y + radius) {
+                    if let Some(ents_at_point) = self.spatial.pemap.get(&Point { x, y }) {
+                        for e in ents_at_point {
+                            if let Some(e_type) = self.entity_types.get(&e) {
+                                map_vec.push((Point { x, y }, e.clone(), e_type.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
+        ClientInfoPacket { map_vec }
+    }
     pub fn process_events(&mut self) {
         let events: Vec<GameEvent> = self.event_queue.drain(..).collect();
 

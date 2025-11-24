@@ -1,6 +1,7 @@
 use crate::structs::*;
 use egui::{FontId, RichText};
 pub struct TemplateApp {
+    player_id: Entity,
     grid_cols: usize,
     grid_rows: usize,
     button_size: Option<f32>,
@@ -11,6 +12,7 @@ pub struct TemplateApp {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
+            player_id: Entity(0),
             grid_cols: 1,      // Will be recalculated
             grid_rows: 1,      // Will be recalculated
             button_size: None, // Will be calculated on first frame
@@ -77,7 +79,7 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle keyboard input
-
+        let client_info = self.world.send_client_info(self.player_id);
         self.input(ctx);
         // Process all events
         self.world.process_events();
@@ -206,8 +208,8 @@ impl TemplateApp {
                         ui.horizontal(|ui| {
                             for col in 0..self.grid_cols {
                                 let point = Point {
-                                    x: col as u32,
-                                    y: row as u32,
+                                    x: col as i32,
+                                    y: row as i32,
                                 };
 
                                 // Get the character to display at this position
