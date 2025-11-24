@@ -132,25 +132,7 @@ impl GameWorld {
     }
 
     pub fn send_client_info(&self, entity_id: EntityID) -> EntityMap {
-        let radius = 20;
-        let mut map_vec = Vec::new();
-
-        if let Some(entity) = self.entities.get(&entity_id) {
-            let ent_pos = entity.position;
-
-            for (other_id, other_entity) in &self.entities {
-                let pos = other_entity.position;
-                if pos.x >= ent_pos.x - radius
-                    && pos.x <= ent_pos.x + radius
-                    && pos.y >= ent_pos.y - radius
-                    && pos.y <= ent_pos.y + radius
-                {
-                    map_vec.push((pos, *other_id, other_entity.entity_type));
-                }
-            }
-        }
-
-        EntityMap::default()
+        self.entities.clone()
     }
 
     pub fn process_events(&mut self) {

@@ -5,7 +5,9 @@ pub struct TemplateApp {
     grid_cols: usize,
     grid_rows: usize,
     button_size: Option<f32>,
+
     world: GameWorld,
+    net_world: GameWorld,
     font_size: f32,
 }
 
@@ -17,6 +19,7 @@ impl Default for TemplateApp {
             grid_rows: 1,      // Will be recalculated
             button_size: None, // Will be calculated on first frame
             world: GameWorld::create_test_world(),
+            net_world: GameWorld::create_test_world(),
             font_size: 20.0, // Default font size
         }
     }
@@ -79,11 +82,16 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle keyboard input
-        let cl_info = self.world.send_client_info(self.player_id);
 
         self.input(ctx);
         // Process all events
-        self.world.process_events();
+        self.net_world.process_events();
+
+        let cl_info = self.net_world.send_client_info(self.player_id);
+
+        for (eid, e) in cl_info.iter() {
+            self.world.entities.insert(eid.clone(), e.clone());
+        }
 
         // Right sidebar
         self.right_panel(ctx);
@@ -99,7 +107,7 @@ impl TemplateApp {
     pub fn input(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
             if i.key_pressed(egui::Key::W) || i.key_pressed(egui::Key::ArrowUp) {
-                self.world.event_queue.push(GameEvent::Move {
+                self.net_world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Up,
                 });
@@ -110,19 +118,19 @@ impl TemplateApp {
             }
 
             if i.key_pressed(egui::Key::S) || i.key_pressed(egui::Key::ArrowDown) {
-                self.world.event_queue.push(GameEvent::Move {
+                self.net_world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Down,
                 });
             }
             if i.key_pressed(egui::Key::A) || i.key_pressed(egui::Key::ArrowLeft) {
-                self.world.event_queue.push(GameEvent::Move {
+                self.net_world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Left,
                 });
             }
             if i.key_pressed(egui::Key::D) || i.key_pressed(egui::Key::ArrowRight) {
-                self.world.event_queue.push(GameEvent::Move {
+                self.net_world.event_queue.push(GameEvent::Move {
                     entity: self.world.player,
                     direction: Direction::Right,
                 });
