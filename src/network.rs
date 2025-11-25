@@ -66,7 +66,24 @@ async fn run_server_internal() -> Result<Router> {
     Ok(router)
 }
 
-async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Message>) -> Result<()> {
+#[derive(Debug, Clone)]
+struct Echo {
+    net_world: Arc<Mutex<GameWorld>>,
+}
+
+impl Echo {
+    fn new() -> Self {
+        Self {
+            net_world: Arc::new(Mutex::new(GameWorld::create_test_world())),
+        }
+    }
+}
+// In network.rs - Update run_client_internal to accept a receiver channel
+async fn run_client_internal(
+    addr: EndpointAddr,
+    tx: mpsc::UnboundedSender<Message>,
+    mut rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
+) -> Result<()> {
     let endpoint = Endpoint::bind().await?;
     let conn = endpoint.connect(addr, ALPN).await?;
 
@@ -78,7 +95,7 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
                 Ok(recv) => match recv_one_way(recv).await {
                     Ok(msg) => {
                         let _ = tx.send(msg.clone());
-                        println!("Client received server count: {:#?}", msg);
+                        println!("Client received server message: {:#?}", msg);
                     }
                     Err(e) => {
                         eprintln!("Error receiving server message: {}", e);
@@ -92,42 +109,32 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
         }
     });
 
-    let client_msg = ClientMessage::GameMessage(GameEvent::Move {
-        entity: EntityID(5),
-        direction: Direction::Up,
-    });
-
+    // Send messages from the UI to the server
     loop {
-        let msg = Message::ClientMessage(client_msg.clone());
+        // Wait for a message from the UI
+        match rx.recv().await {
+            Some(game_event) => {
+                let client_msg = ClientMessage::GameMessage(game_event);
+                let msg = Message::ClientMessage(client_msg);
 
-        match send_one_way(&conn, &msg).await {
-            Ok(_) => {
-                println!("message sent success {:#?}", msg)
+                match send_one_way(&conn, &msg).await {
+                    Ok(_) => {
+                        println!("Message sent successfully: {:#?}", msg);
+                    }
+                    Err(e) => {
+                        eprintln!("Error sending message: {}", e);
+                        break;
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("Error sending message: {}", e);
+            None => {
+                println!("UI channel closed");
                 break;
             }
         }
-
-        // Uncomment to slow down message sending
-        //   tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 
     Ok(())
-}
-
-#[derive(Debug, Clone)]
-struct Echo {
-    net_world: Arc<Mutex<GameWorld>>,
-}
-
-impl Echo {
-    fn new() -> Self {
-        Self {
-            net_world: Arc::new(Mutex::new(GameWorld::create_test_world())),
-        }
-    }
 }
 
 impl ProtocolHandler for Echo {
@@ -190,7 +197,10 @@ impl ProtocolHandler for Echo {
         Ok(())
     }
 }
-pub async fn run_singleplayer_internal(tx: mpsc::UnboundedSender<Message>) -> Result<()> {
+pub async fn run_singleplayer_internal(
+    tx: mpsc::UnboundedSender<Message>,
+    rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
+) -> Result<()> {
     let router = run_server_internal().await?;
     router.endpoint().online().await;
     let server_addr = router.endpoint().addr();
@@ -199,7 +209,7 @@ pub async fn run_singleplayer_internal(tx: mpsc::UnboundedSender<Message>) -> Re
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Run client (will run infinitely)
-    run_client_internal(server_addr, tx).await?;
+    run_client_internal(server_addr, tx, rx).await?;
 
     Ok(())
 }

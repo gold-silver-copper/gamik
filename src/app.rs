@@ -22,9 +22,8 @@ pub struct TemplateApp {
     font_size: f32,
 
     // Networking state
-    message_count: Message,
     message_rx: Option<mpsc::UnboundedReceiver<Message>>,
-
+    game_event_tx: Option<mpsc::UnboundedSender<GameEvent>>, // New field
     _router: Option<Router>,
 }
 
@@ -37,8 +36,8 @@ impl Default for TemplateApp {
             button_size: None,
             world: GameWorld::create_test_world(),
             font_size: 20.0,
-            message_count: Message::Blank,
             message_rx: None,
+            game_event_tx: None, // Initialize as None
             _router: None,
         }
     }
@@ -100,14 +99,16 @@ impl TemplateApp {
 
         app
     }
-
     fn start_singleplayer(&mut self) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        self.message_rx = Some(rx);
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        self.message_rx = Some(msg_rx);
+        self.game_event_tx = Some(event_tx);
 
         // Spawn the networking tasks
         tokio::spawn(async move {
-            match run_singleplayer_internal(tx).await {
+            match run_singleplayer_internal(msg_tx, event_rx).await {
                 Ok(_) => println!("Singleplayer mode finished"),
                 Err(e) => eprintln!("Singleplayer error: {}", e),
             }
@@ -182,7 +183,14 @@ impl TemplateApp {
                     direction: Direction::Right,
                 });
             }
-        });
+        }); // Send all the collected messages
+        if let Some(tx) = &self.game_event_tx {
+            for event in messages_to_send {
+                if let Err(e) = tx.send(event) {
+                    eprintln!("Failed to send game event: {}", e);
+                }
+            }
+        }
     }
 
     pub fn right_panel(&mut self, ctx: &egui::Context) {
@@ -203,10 +211,7 @@ impl TemplateApp {
             .show(ctx, |ui| {
                 ui.heading("Bottom Bar");
                 ui.separator();
-                ui.label(format!(
-                    "Messages received by server: {:#?}",
-                    self.message_count
-                ));
+                ui.label(format!("player_id: {:#?}", self.player_id));
             });
     }
 
