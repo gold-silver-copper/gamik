@@ -7,7 +7,6 @@ use iroh::{
     protocol::{AcceptError, ProtocolHandler, Router},
 };
 use n0_error::{Result, StdResultExt};
-use serde::{Deserialize, Serialize};
 
 use egui::{FontId, RichText};
 use tokio::sync::mpsc;
@@ -15,11 +14,9 @@ use tokio::sync::mpsc;
 const ALPN: &[u8] = b"iroh-example/echo/0";
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
-enum Message {
-    Echo,
-    Ping,
-    Pong,
+#[derive(Debug, Clone, Encode, Decode)]
+enum ClientMessage {
+    GameMessage(GameEvent),
 }
 
 // ====================
@@ -27,7 +24,7 @@ enum Message {
 // ====================
 
 /// Send one message on a new unidirectional stream
-async fn send_one_way(conn: &Connection, msg: &Message) -> Result<()> {
+async fn send_one_way(conn: &Connection, msg: &ClientMessage) -> Result<()> {
     let mut send = conn.open_uni().await.anyerr()?;
 
     let encoded = bincode::encode_to_vec(msg, bincode::config::standard())
@@ -40,7 +37,7 @@ async fn send_one_way(conn: &Connection, msg: &Message) -> Result<()> {
 }
 
 /// Receive one message from a unidirectional stream
-async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<Message> {
+async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<ClientMessage> {
     let bytes = recv.read_to_end(MAX_MESSAGE_SIZE).await.anyerr()?;
 
     let (msg, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
@@ -51,7 +48,7 @@ async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<Message> {
 
 async fn run_server_internal() -> Result<Router> {
     let endpoint = Endpoint::bind().await?;
-    let router = Router::builder(endpoint).accept(ALPN, Echo).spawn();
+    let router = Router::builder(endpoint).accept(ALPN, Echo::new()).spawn();
     println!("Server started at {:#?}", router.endpoint().addr());
     Ok(router)
 }
@@ -62,7 +59,10 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<u64>)
 
     // Infinite stress test: send a message every 100ms
     let mut message_count = 0u64;
-    let messages = vec![Message::Echo, Message::Ping, Message::Pong];
+    let messages = vec![ClientMessage::GameMessage(GameEvent::Move {
+        entity: EntityID(5),
+        direction: Direction::Up,
+    })];
 
     loop {
         let msg = &messages[message_count as usize % messages.len()];
@@ -90,21 +90,34 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<u64>)
     Ok(())
 }
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 #[derive(Debug, Clone)]
-struct Echo;
+struct Echo {
+    receive_count: Arc<AtomicU64>,
+}
+
+impl Echo {
+    fn new() -> Self {
+        Self {
+            receive_count: Arc::new(AtomicU64::new(0)),
+        }
+    }
+}
 
 impl ProtocolHandler for Echo {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let endpoint_id = connection.remote_id();
         println!("Accepted connection from {}", endpoint_id);
 
-        let mut receive_count = 0u64;
-
         // Accept unidirectional streams in a loop
         loop {
             match connection.accept_uni().await {
                 Ok(recv) => {
-                    let current_count = receive_count;
+                    // Increment the shared counter atomically
+                    let current_count = self.receive_count.fetch_add(1, Ordering::SeqCst);
+
                     // Spawn a task to handle each stream independently
                     tokio::spawn(async move {
                         match recv_one_way(recv).await {
@@ -122,12 +135,14 @@ impl ProtocolHandler for Echo {
                             }
                         }
                     });
-
-                    receive_count += 1;
                 }
                 Err(_) => {
                     // Connection closed
-                    println!("Connection closed after {} messages", receive_count);
+                    let total_count = self.receive_count.load(Ordering::SeqCst);
+                    println!(
+                        "Connection closed. Total messages received: {}",
+                        total_count
+                    );
                     break;
                 }
             }
@@ -136,7 +151,6 @@ impl ProtocolHandler for Echo {
         Ok(())
     }
 }
-
 pub struct TemplateApp {
     player_id: EntityID,
     grid_cols: usize,

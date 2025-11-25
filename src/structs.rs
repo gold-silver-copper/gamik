@@ -1,8 +1,9 @@
+use bincode::{Decode, Encode};
 use rustc_hash::FxHashMap;
 
 pub type EntityMap = FxHashMap<EntityID, Entity>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct EntityID(pub u32);
 
 pub struct EntityGenerator(u32);
@@ -24,7 +25,7 @@ pub struct Point {
     pub y: i32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Encode, Decode)]
 pub enum Direction {
     Up,
     Down,
@@ -32,7 +33,7 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub enum GameEvent {
     Move {
         entity: EntityID,
