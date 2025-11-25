@@ -10,16 +10,18 @@ use n0_error::{Result, StdResultExt};
 use serde::{Deserialize, Serialize};
 
 use egui::{FontId, RichText};
+use tokio::sync::mpsc;
 
 const ALPN: &[u8] = b"iroh-example/echo/0";
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
-//
+
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 enum Message {
     Echo,
     Ping,
     Pong,
 }
+
 // ====================
 // Unidirectional Stream Solution
 // ====================
@@ -46,6 +48,7 @@ async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<Message> {
 
     Ok(msg)
 }
+
 async fn run_server_internal() -> Result<Router> {
     let endpoint = Endpoint::bind().await?;
     let router = Router::builder(endpoint).accept(ALPN, Echo).spawn();
@@ -53,7 +56,7 @@ async fn run_server_internal() -> Result<Router> {
     Ok(router)
 }
 
-async fn run_client_internal(addr: EndpointAddr) -> Result<()> {
+async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<u64>) -> Result<()> {
     let endpoint = Endpoint::bind().await?;
     let conn = endpoint.connect(addr, ALPN).await?;
 
@@ -67,6 +70,9 @@ async fn run_client_internal(addr: EndpointAddr) -> Result<()> {
         match send_one_way(&conn, msg).await {
             Ok(_) => {
                 message_count += 1;
+                // Send the count to the UI
+                let _ = tx.send(message_count);
+
                 if message_count % 10 == 0 {
                     println!("Sent {} messages", message_count);
                 }
@@ -77,7 +83,8 @@ async fn run_client_internal(addr: EndpointAddr) -> Result<()> {
             }
         }
 
-        //tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        // Uncomment to slow down message sending
+        // tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 
     Ok(())
@@ -97,15 +104,16 @@ impl ProtocolHandler for Echo {
         loop {
             match connection.accept_uni().await {
                 Ok(recv) => {
+                    let current_count = receive_count;
                     // Spawn a task to handle each stream independently
                     tokio::spawn(async move {
                         match recv_one_way(recv).await {
                             Ok(msg) => {
                                 // Just log occasionally to avoid spam
-                                if receive_count % 10 == 0 {
+                                if current_count % 10 == 0 {
                                     println!(
                                         "Server received message #{}: {:?}",
-                                        receive_count, msg
+                                        current_count, msg
                                     );
                                 }
                             }
@@ -138,18 +146,26 @@ pub struct TemplateApp {
     world: GameWorld,
     net_world: GameWorld,
     font_size: f32,
+
+    // Networking state
+    message_count: u64,
+    message_rx: Option<mpsc::UnboundedReceiver<u64>>,
+    _router: Option<Router>,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             player_id: EntityID(0),
-            grid_cols: 1,      // Will be recalculated
-            grid_rows: 1,      // Will be recalculated
-            button_size: None, // Will be calculated on first frame
+            grid_cols: 1,
+            grid_rows: 1,
+            button_size: None,
             world: GameWorld::create_test_world(),
             net_world: GameWorld::create_test_world(),
-            font_size: 20.0, // Default font size
+            font_size: 20.0,
+            message_count: 0,
+            message_rx: None,
+            _router: None,
         }
     }
 }
@@ -203,16 +219,58 @@ impl TemplateApp {
         // Apply the fonts to the context
         cc.egui_ctx.set_fonts(fonts);
 
-        Default::default()
+        let mut app = Self::default();
+
+        // Start the networking
+        app.start_singleplayer();
+
+        app
     }
+
+    fn start_singleplayer(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.message_rx = Some(rx);
+
+        // Spawn the networking tasks
+        tokio::spawn(async move {
+            match run_singleplayer_internal(tx).await {
+                Ok(_) => println!("Singleplayer mode finished"),
+                Err(e) => eprintln!("Singleplayer error: {}", e),
+            }
+        });
+    }
+}
+
+async fn run_singleplayer_internal(tx: mpsc::UnboundedSender<u64>) -> Result<()> {
+    let router = run_server_internal().await?;
+    router.endpoint().online().await;
+    let server_addr = router.endpoint().addr();
+
+    // Give server time to start
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Run client (will run infinitely)
+    run_client_internal(server_addr, tx).await?;
+
+    Ok(())
 }
 
 impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Handle keyboard input
+        // Check for new message counts
+        if let Some(rx) = &mut self.message_rx {
+            while let Ok(count) = rx.try_recv() {
+                self.message_count = count;
+            }
+        }
 
+        // Request continuous repainting to keep UI responsive
+        ctx.request_repaint();
+
+        // Handle keyboard input
         self.input(ctx);
+
         // Process all events
         self.net_world.process_events();
 
@@ -227,6 +285,7 @@ impl eframe::App for TemplateApp {
 
         // Bottom bar
         self.bottom_panel(ctx);
+
         // Central panel with letter grid
         self.rogue_screen(ctx);
     }
@@ -266,6 +325,7 @@ impl TemplateApp {
             }
         });
     }
+
     pub fn right_panel(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("right_panel")
             .resizable(true)
@@ -283,7 +343,7 @@ impl TemplateApp {
             .show(ctx, |ui| {
                 ui.heading("Bottom Bar");
                 ui.separator();
-                ui.label("Bottom bar content here");
+                ui.label(format!("Messages sent: {}", self.message_count));
             });
     }
 
@@ -328,12 +388,8 @@ impl TemplateApp {
             let max_rows = (available_size.y / button_size).floor() as usize;
 
             // Use all available space
-            self.grid_cols = max_cols.max(1); // At least 1 column
-            self.grid_rows = max_rows.max(1); // At least 1 row
-
-            // Calculate center position
-            let center_row = self.grid_rows / 2;
-            let center_col = self.grid_cols / 2;
+            self.grid_cols = max_cols.max(1);
+            self.grid_rows = max_rows.max(1);
 
             // Set spacing to zero for the grid
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -360,6 +416,7 @@ impl TemplateApp {
                                 .min_size(egui::vec2(button_size, button_size))
                                 .small()
                                 .corner_radius(0.0);
+
                                 if ui.add(button).clicked() {
                                     println!("Button clicked at row: {}, col: {}", row, col);
                                 }
