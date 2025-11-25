@@ -76,18 +76,15 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
     tokio::spawn(async move {
         loop {
             match conn_clone.accept_uni().await {
-                Ok(recv) => {
-                    match recv_one_way(recv).await {
-                        Ok(msg) => {
-                            // Send the server's count to the UI
-                            let _ = tx.send(msg.clone());
-                            println!("Client received server count: {:#?}", msg);
-                        }
-                        Err(e) => {
-                            eprintln!("Error receiving server message: {}", e);
-                        }
+                Ok(recv) => match recv_one_way(recv).await {
+                    Ok(msg) => {
+                        let _ = tx.send(msg.clone());
+                        println!("Client received server count: {:#?}", msg);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("Error receiving server message: {}", e);
+                    }
+                },
                 Err(_) => {
                     println!("Server connection closed");
                     break;
@@ -96,8 +93,6 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
         }
     });
 
-    // Send messages to server
-    let mut message_count = 0u64;
     let client_msg = ClientMessage::GameMessage(GameEvent::Move {
         entity: EntityID(5),
         direction: Direction::Up,
@@ -108,11 +103,7 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
 
         match send_one_way(&conn, &msg).await {
             Ok(_) => {
-                message_count += 1;
-
-                if message_count % 10 == 0 {
-                    println!("Client sent {} messages", message_count);
-                }
+                println!("message sent success {:#?}", msg)
             }
             Err(e) => {
                 eprintln!("Error sending message: {}", e);
@@ -121,7 +112,7 @@ async fn run_client_internal(addr: EndpointAddr, tx: mpsc::UnboundedSender<Messa
         }
 
         // Uncomment to slow down message sending
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        //   tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 
     Ok(())

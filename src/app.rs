@@ -25,6 +25,7 @@ pub struct TemplateApp {
     // Networking state
     message_count: Message,
     message_rx: Option<mpsc::UnboundedReceiver<Message>>,
+
     _router: Option<Router>,
 }
 
@@ -201,6 +202,7 @@ impl TemplateApp {
     pub fn bottom_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("bottom_panel")
             .default_height(100.0)
+            .max_height(200.0)
             .show(ctx, |ui| {
                 ui.heading("Bottom Bar");
                 ui.separator();
@@ -212,6 +214,7 @@ impl TemplateApp {
     }
 
     fn rogue_screen(&mut self, ctx: &egui::Context) {
+        println!("RENDERING ROGUE SCREEN");
         egui::CentralPanel::default().show(ctx, |ui| {
             // Customize button styling for tighter spacing
             let style = ui.style_mut();
