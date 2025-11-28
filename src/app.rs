@@ -87,27 +87,12 @@ impl TemplateApp {
         let mut app = Self::default();
 
         // Start the networking
-        app.start_singleplayer();
+        app.start_server();
+        app.start_client();
 
         app
     }
 
-    pub async fn run_singleplayer_internal(
-        tx: mpsc::UnboundedSender<Message>,
-        rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
-    ) -> Result<()> {
-        let router = run_server_internal().await?;
-        router.endpoint().online().await;
-        let server_addr = router.endpoint().addr();
-
-        // Give server time to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // Run client (will run infinitely)
-        run_client_internal(server_addr, tx, rx).await?;
-
-        Ok(())
-    }
     fn start_client(&mut self) {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -138,28 +123,14 @@ impl TemplateApp {
             }
         });
 
-        // Try to receive the router (non-blocking)
-        // Note: This won't work immediately since the server starts asynchronously
-        // You'll need to poll for it in the update loop
-        if let Ok(router) = router_rx.try_recv() {
-            self.router = Some(router);
-        }
-    }
-
-    fn start_singleplayer(&mut self) {
-        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
-
-        self.server_to_client_rx = Some(msg_rx);
-        self.client_to_server_tx = Some(event_tx);
-
-        // Spawn the networking tasks
-        tokio::spawn(async move {
-            match run_singleplayer_internal(msg_tx, event_rx).await {
-                Ok(_) => println!("Singleplayer mode finished"),
-                Err(e) => eprintln!("Singleplayer error: {}", e),
+        while self.router.is_none() {
+            // Try to receive the router (non-blocking)
+            // Note: This won't work immediately since the server starts asynchronously
+            // You'll need to poll for it in the update loop
+            if let Ok(router) = router_rx.try_recv() {
+                self.router = Some(router);
             }
-        });
+        }
     }
 }
 
