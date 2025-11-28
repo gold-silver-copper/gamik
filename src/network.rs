@@ -59,7 +59,7 @@ async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<Message> {
     Ok(msg)
 }
 
-async fn run_server_internal() -> Result<Router> {
+pub async fn run_server_internal() -> Result<Router> {
     let endpoint = Endpoint::bind().await?;
     let router = Router::builder(endpoint).accept(ALPN, Echo::new()).spawn();
     println!("Server started at {:#?}", router.endpoint().addr());
@@ -79,7 +79,7 @@ impl Echo {
     }
 }
 // In network.rs - Update run_client_internal to accept a receiver channel
-async fn run_client_internal(
+pub async fn run_client_internal(
     addr: EndpointAddr,
     tx: mpsc::UnboundedSender<Message>,
     mut rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
@@ -196,20 +196,4 @@ impl ProtocolHandler for Echo {
 
         Ok(())
     }
-}
-pub async fn run_singleplayer_internal(
-    tx: mpsc::UnboundedSender<Message>,
-    rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
-) -> Result<()> {
-    let router = run_server_internal().await?;
-    router.endpoint().online().await;
-    let server_addr = router.endpoint().addr();
-
-    // Give server time to start
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    // Run client (will run infinitely)
-    run_client_internal(server_addr, tx, rx).await?;
-
-    Ok(())
 }

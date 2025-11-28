@@ -1,16 +1,9 @@
 use crate::structs::*;
 
 use crate::network::*;
-use bincode::{Decode, Encode};
 use egui::{FontId, RichText};
-use iroh::{
-    Endpoint, EndpointAddr,
-    endpoint::Connection,
-    protocol::{AcceptError, ProtocolHandler, Router},
-};
-use n0_error::{Result, StdResultExt};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use iroh::EndpointAddr;
+use iroh::protocol::Router;
 use tokio::sync::mpsc;
 pub struct TemplateApp {
     player_id: EntityID,
@@ -20,25 +13,24 @@ pub struct TemplateApp {
 
     world: GameWorld,
     font_size: f32,
-
+    router: Option<Router>,
     // Networking state
-    message_rx: Option<mpsc::UnboundedReceiver<Message>>,
-    game_event_tx: Option<mpsc::UnboundedSender<GameEvent>>, // New field
-    _router: Option<Router>,
+    server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
+    client_to_server_tx: Option<mpsc::UnboundedSender<GameEvent>>, // New field
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
+            router: None,
             player_id: EntityID(0),
             grid_cols: 1,
             grid_rows: 1,
             button_size: None,
             world: GameWorld::create_test_world(),
             font_size: 20.0,
-            message_rx: None,
-            game_event_tx: None, // Initialize as None
-            _router: None,
+            server_to_client_rx: None,
+            client_to_server_tx: None, // Initialize as None
         }
     }
 }
@@ -99,12 +91,67 @@ impl TemplateApp {
 
         app
     }
+
+    pub async fn run_singleplayer_internal(
+        tx: mpsc::UnboundedSender<Message>,
+        rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
+    ) -> Result<()> {
+        let router = run_server_internal().await?;
+        router.endpoint().online().await;
+        let server_addr = router.endpoint().addr();
+
+        // Give server time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Run client (will run infinitely)
+        run_client_internal(server_addr, tx, rx).await?;
+
+        Ok(())
+    }
+    fn start_client(&mut self) {
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        self.server_to_client_rx = Some(msg_rx);
+        self.client_to_server_tx = Some(event_tx);
+        let server_addr = self.router.as_ref().unwrap().endpoint().addr();
+        // Spawn the networking tasks
+        tokio::spawn(async move {
+            run_client_internal(server_addr, msg_tx, event_rx).await;
+        });
+    }
+    fn start_server(&mut self) {
+        let (router_tx, mut router_rx) = mpsc::unbounded_channel();
+
+        // Spawn an async task to start the server
+        tokio::spawn(async move {
+            match run_server_internal().await {
+                Ok(router) => {
+                    println!(
+                        "Server started successfully at {:#?}",
+                        router.endpoint().addr()
+                    );
+                    // Send the router back to the main thread
+                    let _ = router_tx.send(router);
+                }
+                Err(e) => eprintln!("Server error: {}", e),
+            }
+        });
+
+        // Try to receive the router (non-blocking)
+        // Note: This won't work immediately since the server starts asynchronously
+        // You'll need to poll for it in the update loop
+        if let Ok(router) = router_rx.try_recv() {
+            self.router = Some(router);
+        }
+    }
+
     fn start_singleplayer(&mut self) {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
-        self.message_rx = Some(msg_rx);
-        self.game_event_tx = Some(event_tx);
+        self.server_to_client_rx = Some(msg_rx);
+        self.client_to_server_tx = Some(event_tx);
 
         // Spawn the networking tasks
         tokio::spawn(async move {
@@ -120,7 +167,7 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for new message counts from server
-        if let Some(rx) = &mut self.message_rx {
+        if let Some(rx) = &mut self.server_to_client_rx {
             while let Ok(smsg) = rx.try_recv() {
                 if let Message::ServerMessage(ServerMessage::EntityMap(emap)) = smsg {
                     for (eid, e) in emap.iter() {
@@ -184,7 +231,7 @@ impl TemplateApp {
                 });
             }
         }); // Send all the collected messages
-        if let Some(tx) = &self.game_event_tx {
+        if let Some(tx) = &self.client_to_server_tx {
             for event in messages_to_send {
                 if let Err(e) = tx.send(event) {
                     eprintln!("Failed to send game event: {}", e);
