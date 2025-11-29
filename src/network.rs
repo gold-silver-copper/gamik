@@ -7,7 +7,7 @@ use iroh::{
     protocol::{AcceptError, ProtocolHandler, Router},
 };
 use n0_error::{Result, StdResultExt};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use tokio::sync::mpsc;
@@ -64,7 +64,10 @@ pub async fn run_server_internal() -> Result<Router> {
 
     endpoint.online().await;
     let router = Router::builder(endpoint).accept(ALPN, Echo::new()).spawn();
+
+    router.endpoint().online().await;
     println!("Server started at {:#?}", router.endpoint().addr());
+    tokio::time::sleep(Duration::from_millis(2000)).await;
     Ok(router)
 }
 
@@ -86,13 +89,14 @@ pub async fn run_client_internal(
     tx: mpsc::UnboundedSender<Message>,
     mut rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
 ) -> Result<()> {
-    let endpoint = Endpoint::builder().bind().await?;
+    let endpoint = Endpoint::bind().await?;
     endpoint.online().await;
     println!("client endpoint created: {:#?}", endpoint.addr());
     println!("trying to connect to {}", addr);
     let conn = endpoint.connect(addr, ALPN).await?;
     println!("CLIENT CONNECTED");
     // Spawn a task to receive messages from server
+
     let conn_clone = conn.clone();
     tokio::spawn(async move {
         loop {
