@@ -65,7 +65,7 @@ pub async fn run_server_internal() -> Result<Router> {
     endpoint.online().await;
     let router = Router::builder(endpoint).accept(ALPN, Echo::new()).spawn();
 
-    router.endpoint().online().await;
+    // router.endpoint().online().await;
     println!("Server started at {:#?}", router.endpoint().addr());
     tokio::time::sleep(Duration::from_millis(2000)).await;
     Ok(router)
@@ -90,7 +90,7 @@ pub async fn run_client_internal(
     mut rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
 ) -> Result<()> {
     let endpoint = Endpoint::bind().await?;
-    endpoint.online().await;
+    //    endpoint.online().await;
     println!("client endpoint created: {:#?}", endpoint.addr());
     let conn = endpoint.connect(addr, ALPN).await?;
     println!("CLIENT CONNECTED");

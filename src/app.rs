@@ -3,6 +3,7 @@ use crate::structs::*;
 use crate::network::*;
 use egui::{FontId, RichText};
 use iroh::EndpointAddr;
+use iroh::EndpointId;
 use iroh::protocol::Router;
 use tokio::sync::mpsc;
 pub struct TemplateApp {
@@ -203,12 +204,18 @@ impl TemplateApp {
                 ui.add_space(100.0);
 
                 ui.heading(RichText::new("Roguelike Game").size(32.0));
+
+                ui.heading(format!(
+                    "Endpoint ID: {}",
+                    self.router.as_ref().unwrap().endpoint().id()
+                ));
                 ui.add_space(50.0);
 
                 if ui
                     .button(RichText::new("Start Singleplayer Game").size(20.0))
                     .clicked()
                 {
+                    self.game_state = GameState::Playing;
                     println!("LOL");
                 }
 
@@ -237,6 +244,17 @@ impl TemplateApp {
                 ui.add_space(10.0);
 
                 if ui.button(RichText::new("Connect").size(18.0)).clicked() {
+                    // Parse the endpoint address
+                    match self.multiplayer_endpoint_input.parse::<EndpointId>() {
+                        Ok(addr) => {
+                            self.start_client(addr);
+                        }
+                        Err(e) => {
+                            self.game_state = GameState::MainMenu;
+                        }
+                    }
+                    self.game_state = GameState::Playing;
+
                     println!("LOL");
                 }
             });
