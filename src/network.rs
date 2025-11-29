@@ -85,14 +85,13 @@ impl Echo {
 }
 // In network.rs - Update run_client_internal to accept a receiver channel
 pub async fn run_client_internal(
-    addr: EndpointId,
+    addr: impl Into<EndpointAddr>,
     tx: mpsc::UnboundedSender<Message>,
     mut rx: mpsc::UnboundedReceiver<GameEvent>, // New parameter
 ) -> Result<()> {
     let endpoint = Endpoint::bind().await?;
     endpoint.online().await;
     println!("client endpoint created: {:#?}", endpoint.addr());
-    println!("trying to connect to {}", addr);
     let conn = endpoint.connect(addr, ALPN).await?;
     println!("CLIENT CONNECTED");
     // Spawn a task to receive messages from server

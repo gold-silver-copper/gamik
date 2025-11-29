@@ -88,12 +88,13 @@ impl TemplateApp {
 
         // Start the networking
         app.start_server();
-        app.start_client();
+        let eid = app.router.as_ref().unwrap().endpoint().id();
+        app.start_client(eid);
 
         app
     }
 
-    fn start_client(&mut self) {
+    fn start_client(&mut self, addr: impl Into<EndpointAddr>) {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
