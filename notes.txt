@@ -1,0 +1,5 @@
+impl Shearable for Sheep
+
+impl Name for Sheep
+ -> "sheep"
+
