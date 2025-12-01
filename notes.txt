@@ -95,6 +95,7 @@ steel, iron, wood, oak, stone, ruby, diamond
 
 WORLDGEN----------------------------------------------------
 character creation
+furry
 races- elves, humans, orcs, goblins, dwarves, gnomes, etc
 mythic creatures- dragons, trolls, wyvern, dinosaur,
 various animals- sheep,cows,horses,alpacas,elephants,rhinos,
