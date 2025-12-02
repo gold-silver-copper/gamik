@@ -5,6 +5,8 @@ use egui::{FontId, RichText};
 use iroh::EndpointAddr;
 use iroh::EndpointId;
 use iroh::protocol::Router;
+use std::fs;
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 pub struct TemplateApp {
     player_id: EntityID,
@@ -177,7 +179,9 @@ impl eframe::App for TemplateApp {
             GameState::CharacterCreation => {}
             GameState::WorldCreation => {}
             GameState::CharacterSelection => {}
-            GameState::WorldSelection => {}
+            GameState::WorldSelection => {
+                self.show_world_selection_menu(ctx);
+            }
             GameState::Playing => {
                 // Check for new message counts from server
                 if let Some(rx) = &mut self.server_to_client_rx {
@@ -256,43 +260,64 @@ impl TemplateApp {
             ui.vertical_centered(|ui| {
                 ui.add_space(50.0);
 
-                ui.heading(RichText::new("Roguelike Game").size(32.0));
-
-                ui.heading(format!(
-                    "Endpoint ID: {}",
-                    self.router.as_ref().unwrap().endpoint().id()
-                ));
-                ui.add_space(50.0);
-
-                if ui.button(RichText::new("Start Game").size(20.0)).clicked() {
-                    self.game_state = GameState::WorldSelection;
-                }
-
+                ui.heading("World Selection");
                 ui.add_space(20.0);
 
+                // Create New World button
                 if ui
-                    .button(RichText::new("Join Online Game").size(20.0))
+                    .button(RichText::new("Create New World").size(20.0))
                     .clicked()
                 {
-                    // Parse the endpoint address
-                    match self.multiplayer_endpoint_input.parse::<EndpointId>() {
-                        Ok(addr) => {
-                            self.start_client(addr);
+                    self.game_state = GameState::WorldCreation;
+                }
 
-                            self.game_state = GameState::Playing;
-                        }
-                        Err(e) => {
-                            self.game_state = GameState::MainMenu;
-                        }
-                    }
+                ui.add_space(30.0);
+
+                // List existing worlds
+                let world_files = get_world_files();
+
+                if world_files.is_empty() {
+                    ui.label("No existing worlds found");
+                } else {
+                    ui.label(RichText::new("Load Existing World:").size(16.0));
+                    ui.add_space(10.0);
+
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            for world_path in world_files {
+                                if let Some(filename) = world_path.file_stem() {
+                                    if let Some(name) = filename.to_str() {
+                                        if ui.button(RichText::new(name).size(18.0)).clicked() {
+                                            // Load the world here
+                                            self.load_world(&world_path);
+                                        }
+                                    }
+                                }
+                            }
+                        });
                 }
 
                 ui.add_space(20.0);
-
-                ui.label("Enter Server ID:");
-                ui.text_edit_singleline(&mut self.multiplayer_endpoint_input);
             });
         });
+    }
+
+    // Add this method to handle world loading
+    fn load_world(&mut self, path: &PathBuf) {
+        // Implement your world loading logic here
+        // For example:
+        match fs::read_to_string(path) {
+            Ok(data) => {
+                // Deserialize and load world data
+                // self.current_world = deserialize_world(&data);
+                // self.game_state = GameState::Playing;
+                println!("Loading world from: {:?}", path);
+            }
+            Err(e) => {
+                eprintln!("Failed to load world: {}", e);
+            }
+        }
     }
     pub fn input(&mut self, ctx: &egui::Context) {
         let mut messages_to_send = Vec::new();
@@ -427,4 +452,31 @@ impl TemplateApp {
             });
         });
     }
+}
+
+// Add this method to get available world files
+fn get_world_files() -> Vec<PathBuf> {
+    let worlds_dir = PathBuf::from("worlds");
+
+    if !worlds_dir.exists() {
+        // Create the directory if it doesn't exist
+        let _ = fs::create_dir_all(&worlds_dir);
+        return Vec::new();
+    }
+
+    fs::read_dir(worlds_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| ext == "world")
+                        .unwrap_or(false)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
