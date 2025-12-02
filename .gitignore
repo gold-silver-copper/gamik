@@ -13,3 +13,4 @@ target_wasm
 .lycheecache
 Cargo.lock
 Cargo.lock
+/worlds

@@ -18,6 +18,7 @@ pub struct TemplateApp {
     world: GameWorld,
     font_size: f32,
     router: Option<Router>,
+    world_name_input: String, // Add this field
     // Networking state
     server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
     client_to_server_tx: Option<mpsc::UnboundedSender<GameCommand>>, // New field
@@ -41,6 +42,7 @@ impl Default for TemplateApp {
             player_id: EntityID(0),
             grid_cols: 1,
             grid_rows: 1,
+            world_name_input: String::new(), // Add this
             button_size: None,
             world: GameWorld::create_test_world(),
             font_size: 20.0,
@@ -305,7 +307,61 @@ impl TemplateApp {
         });
     }
 
-    // Add this method to handle world loading
+    fn show_world_creation_menu(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+
+                ui.heading("World Creation");
+                ui.add_space(20.0);
+
+                // Text input for world name
+                ui.label("Enter world name:");
+                ui.add_space(5.0);
+
+                // Add a local variable to store the world name input
+                // You'll need to add this field to TemplateApp: world_name_input: String
+                ui.text_edit_singleline(&mut self.world_name_input);
+
+                ui.add_space(20.0);
+
+                // Create Test World button
+                if ui
+                    .button(RichText::new("Create Test World").size(20.0))
+                    .clicked()
+                {
+                    let world_name = if self.world_name_input.trim().is_empty() {
+                        // Generate a default name with timestamp
+                        format!("world_{}", "lol")
+                    } else {
+                        self.world_name_input.trim().to_string()
+                    };
+
+                    // Create and save the world
+                    let new_world = GameWorld::create_test_world();
+                    match new_world.save_to_file(&world_name) {
+                        Ok(_) => {
+                            println!("World '{}' created successfully!", world_name);
+                            // Clear the input
+                            self.world_name_input.clear();
+                            // Return to world selection
+                            self.game_state = GameState::WorldSelection;
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to create world: {}", e);
+                        }
+                    }
+                }
+
+                ui.add_space(20.0);
+
+                // Back button
+                if ui.button(RichText::new("Back").size(16.0)).clicked() {
+                    self.game_state = GameState::WorldSelection;
+                }
+            });
+        });
+    } // Add this method to handle world loading
     fn load_world(&mut self, path: &PathBuf) {
         // Implement your world loading logic here
         // For example:
@@ -455,30 +511,21 @@ impl TemplateApp {
         });
     }
 }
-
-// Add this method to get available world files
-fn get_world_files() -> Vec<PathBuf> {
+/// Lists all available world files
+pub fn get_world_files() -> Vec<PathBuf> {
     let worlds_dir = PathBuf::from("worlds");
 
     if !worlds_dir.exists() {
-        // Create the directory if it doesn't exist
-        let _ = fs::create_dir_all(&worlds_dir);
         return Vec::new();
     }
 
-    fs::read_dir(worlds_dir)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.extension()
-                        .and_then(|ext| ext.to_str())
-                        .map(|ext| ext == "world")
-                        .unwrap_or(false)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    let Ok(entries) = fs::read_dir(worlds_dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("world"))
+        .collect()
 }

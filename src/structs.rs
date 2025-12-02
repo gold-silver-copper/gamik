@@ -2,7 +2,9 @@ use bincode::{Decode, Encode};
 use egui::ahash::HashMapExt;
 use iroh::EndpointId;
 use rustc_hash::FxHashMap;
-
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 pub type EntityMap = FxHashMap<EntityID, Entity>;
 pub type EndpointMap = FxHashMap<EndpointId, EntityID>;
 
@@ -68,6 +70,13 @@ pub struct GameWorld {
     pub entities: EntityMap,
 }
 
+// Serializable version of GameWorld (without the non-serializable fields)
+#[derive(Encode, Decode)]
+pub struct SerializableGameWorld {
+    pub entity_gen: EntityGenerator,
+    pub entities: EntityMap,
+}
+
 impl GameWorld {
     pub fn spawn_player(&mut self, name: String) -> EntityID {
         let player = self.entity_gen.new_entity();
@@ -81,6 +90,51 @@ impl GameWorld {
         );
 
         player
+    }
+
+    /// Saves the GameWorld to a .world file in the worlds directory
+    pub fn save_to_file(&self, world_name: &str) -> io::Result<()> {
+        // Create worlds directory if it doesn't exist
+        let worlds_dir = PathBuf::from("worlds");
+        fs::create_dir_all(&worlds_dir)?;
+
+        // Create the full path
+        let file_path = worlds_dir.join(format!("{}.world", world_name));
+
+        // Create serializable version
+        let serializable = SerializableGameWorld {
+            entity_gen: self.entity_gen,
+            entities: self.entities.clone(),
+        };
+
+        // Serialize to bytes
+        let encoded = bincode::encode_to_vec(&serializable, bincode::config::standard())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+        // Write to file
+        fs::write(&file_path, encoded)?;
+
+        println!("World saved to: {:?}", file_path);
+        Ok(())
+    }
+
+    /// Loads a GameWorld from a .world file
+    pub fn load_from_file(file_path: &Path) -> io::Result<Self> {
+        // Read file bytes
+        let bytes = fs::read(file_path)?;
+
+        // Deserialize
+        let (serializable, _): (SerializableGameWorld, usize) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+        // Reconstruct GameWorld
+        Ok(GameWorld {
+            entity_gen: serializable.entity_gen,
+            entities: serializable.entities,
+            event_queue: Vec::new(),
+            endpoints: EndpointMap::new(),
+        })
     }
     pub fn create_test_world() -> Self {
         let mut entity_gen = EntityGenerator::default();
@@ -165,7 +219,7 @@ impl GameWorld {
         for entity in self.entities.values() {
             if entity.position == *point {
                 return match entity.entity_type {
-                    EntityType::Player => "𓀙",
+                    EntityType::Player => "@",
                     EntityType::Tree => "木",
                 };
             }
