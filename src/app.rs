@@ -177,7 +177,9 @@ impl eframe::App for TemplateApp {
             }
 
             GameState::CharacterCreation => {}
-            GameState::WorldCreation => {}
+            GameState::WorldCreation => {
+                self.show_world_creation_menu(ctx);
+            }
             GameState::CharacterSelection => {}
             GameState::WorldSelection => {
                 self.show_world_selection_menu(ctx);
@@ -269,7 +271,6 @@ impl TemplateApp {
                     .clicked()
                 {
                     self.game_state = GameState::WorldCreation;
-                    self.game_state = GameState::Playing;
                 }
 
                 ui.add_space(30.0);
