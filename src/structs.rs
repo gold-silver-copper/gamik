@@ -83,16 +83,6 @@ impl GameWorld {
         let mut entity_gen = EntityGenerator::default();
         let mut entities = EntityMap::default();
 
-        // Create player
-        let player = entity_gen.new_entity();
-        entities.insert(
-            player,
-            Entity {
-                position: Point { x: 10, y: 10 },
-                entity_type: EntityType::Player,
-            },
-        );
-
         // Create some trees
         let tree_positions = vec![
             Point { x: 5, y: 5 },
