@@ -19,6 +19,7 @@ pub struct TemplateApp {
     font_size: f32,
     router: Option<Router>,
     world_name_input: String, // Add this field
+    character_name_input: String,
     // Networking state
     server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
     client_to_server_tx: Option<mpsc::UnboundedSender<GameCommand>>, // New field
@@ -42,6 +43,7 @@ impl Default for TemplateApp {
             player_id: EntityID(0),
             grid_cols: 1,
             grid_rows: 1,
+            character_name_input: String::new(),
             world_name_input: String::new(), // Add this
             button_size: None,
             world: GameWorld::create_test_world(),
@@ -104,9 +106,6 @@ impl TemplateApp {
         let mut app = Self::default();
 
         // Start the networking
-        //     app.start_server();
-        //   let eid = app.router.as_ref().unwrap().endpoint().id();
-        //  app.start_client(eid);
 
         app
     }
@@ -178,11 +177,15 @@ impl eframe::App for TemplateApp {
                 self.show_main_menu(ctx);
             }
 
-            GameState::CharacterCreation => {}
+            GameState::CharacterCreation => {
+                self.show_character_creation_menu(ctx);
+            }
             GameState::WorldCreation => {
                 self.show_world_creation_menu(ctx);
             }
-            GameState::CharacterSelection => {}
+            GameState::CharacterSelection => {
+                self.show_character_selection_menu(ctx);
+            }
             GameState::WorldSelection => {
                 self.show_world_selection_menu(ctx);
             }
@@ -294,6 +297,11 @@ impl TemplateApp {
                                                 GameWorld::load_from_file(&world_path)
                                             {
                                                 self.start_server(world);
+
+                                                let eid =
+                                                    self.router.as_ref().unwrap().endpoint().id();
+                                                self.start_client(eid);
+                                                self.game_state = GameState::CharacterSelection;
                                             }
                                         }
                                     }
@@ -307,6 +315,62 @@ impl TemplateApp {
         });
     }
 
+    fn show_character_selection_menu(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+
+                ui.heading("Character Selection");
+                ui.add_space(20.0);
+
+                // Create New World button
+                if ui
+                    .button(RichText::new("Create New Character").size(20.0))
+                    .clicked()
+                {
+                    self.game_state = GameState::CharacterCreation;
+                }
+
+                ui.add_space(30.0);
+
+                // List existing worlds
+                let world_files = get_world_files();
+
+                if world_files.is_empty() {
+                    ui.label("No available characters found");
+                } else {
+                    ui.label(RichText::new("Load Existing Character:").size(16.0));
+                    ui.add_space(10.0);
+
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            for world_path in world_files {
+                                if let Some(filename) = world_path.file_stem() {
+                                    if let Some(name) = filename.to_str() {
+                                        if ui.button(RichText::new(name).size(18.0)).clicked() {
+                                            // Load the world here
+                                            if let Ok(world) =
+                                                GameWorld::load_from_file(&world_path)
+                                            {
+                                                self.start_server(world);
+
+                                                let eid =
+                                                    self.router.as_ref().unwrap().endpoint().id();
+                                                self.start_client(eid);
+                                                self.game_state = GameState::CharacterSelection;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                }
+
+                ui.add_space(20.0);
+            });
+        });
+    }
     fn show_world_creation_menu(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -363,6 +427,54 @@ impl TemplateApp {
         });
     }
 
+    fn show_character_creation_menu(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+
+                ui.heading("Character Creation");
+                ui.add_space(20.0);
+
+                // Text input for world name
+                ui.label("Enter Character name:");
+                ui.add_space(5.0);
+
+                // Add a local variable to store the world name input
+                // You'll need to add this field to TemplateApp: world_name_input: String
+                ui.text_edit_singleline(&mut self.character_name_input);
+
+                ui.add_space(20.0);
+
+                // Create Test World button
+                if ui
+                    .button(RichText::new("Create New Character").size(20.0))
+                    .clicked()
+                {
+                    let char_name = if self.character_name_input.trim().is_empty() {
+                        // Generate a default name with timestamp
+                        format!("John")
+                    } else {
+                        self.character_name_input.trim().to_string()
+                    };
+
+                    if let Some(tx) = &self.client_to_server_tx {
+                        if let Err(e) = tx.send(GameCommand::SpawnPlayer(char_name)) {
+                            eprintln!("Failed to send game event: {}", e);
+                        } else {
+                            self.game_state = GameState::Playing;
+                        }
+                    }
+                }
+
+                ui.add_space(20.0);
+
+                // Back button
+                if ui.button(RichText::new("Back").size(16.0)).clicked() {
+                    self.game_state = GameState::WorldSelection;
+                }
+            });
+        });
+    }
     pub fn input(&mut self, ctx: &egui::Context) {
         let mut messages_to_send = Vec::new();
 
