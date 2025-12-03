@@ -415,7 +415,7 @@ impl TemplateApp {
 
                     // Create and save the world
                     let new_world = GameWorld::create_test_world(world_name.clone());
-                    match new_world.save_to_file(&world_name) {
+                    match new_world.save_to_file() {
                         Ok(_) => {
                             println!("World '{}' created successfully!", world_name);
                             // Clear the input
@@ -507,6 +507,9 @@ impl TemplateApp {
             }
             if i.key_pressed(egui::Key::D) || i.key_pressed(egui::Key::ArrowRight) {
                 messages_to_send.push(GameCommand::Move(Direction::Right));
+            }
+            if i.key_pressed(egui::Key::R) {
+                messages_to_send.push(GameCommand::SaveWorld);
             }
         }); // Send all the collected messages
         if let Some(tx) = &self.client_to_server_tx {

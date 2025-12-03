@@ -44,6 +44,7 @@ pub enum GameCommand {
     Move(Direction),
     SpawnPlayer(String),
     SpawnAs(EntityID),
+    SaveWorld,
 }
 
 pub type GameEvent = (EntityID, GameCommand);
@@ -96,13 +97,13 @@ impl GameWorld {
     }
 
     /// Saves the GameWorld to a .world file in the worlds directory
-    pub fn save_to_file(&self, world_name: &str) -> io::Result<()> {
+    pub fn save_to_file(&self) -> io::Result<()> {
         // Create worlds directory if it doesn't exist
         let worlds_dir = PathBuf::from("worlds");
         fs::create_dir_all(&worlds_dir)?;
 
         // Create the full path
-        let file_path = worlds_dir.join(format!("{}.world", world_name));
+        let file_path = worlds_dir.join(format!("{}.world", self.world_name));
 
         // Create serializable version
         let serializable = SerializableGameWorld {
@@ -230,6 +231,10 @@ impl GameWorld {
                 }
                 GameCommand::SpawnAs(eid) => {
                     // Do nothing here this is covered in the networking code
+                }
+
+                GameCommand::SaveWorld => {
+                    self.save_to_file();
                 }
             }
         }
