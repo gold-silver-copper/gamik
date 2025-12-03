@@ -104,8 +104,8 @@ wool, leather, cotton, silk, chainmail, platemail,linen,
 steel, iron, wood, oak, stone, ruby, diamond
 
 WORLDGEN----------------------------------------------------
-character creation
-full anthro furry + half furry just tail and ears
+character creation. piercings, tattoos, hairstyles, scars.
+full anthro furry + half furry just tail and ears . furries can go feral. werewolves, werefoxes, were-*. 
 races- elves, humans, orcs, goblins, dwarves, gnomes, etc
 mythic creatures- dragons, trolls, wyvern, dinosaur,
 various animals- sheep,cows,horses,alpacas,elephants,rhinos,

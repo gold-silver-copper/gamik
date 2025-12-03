@@ -24,6 +24,7 @@ pub struct TemplateApp {
     server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
     client_to_server_tx: Option<mpsc::UnboundedSender<GameCommand>>, // New field
     game_state: GameState,
+    single_player: bool,
 }
 #[derive(Debug, Clone, PartialEq)]
 enum GameState {
@@ -50,6 +51,7 @@ impl Default for TemplateApp {
             font_size: 20.0,
             server_to_client_rx: None,
             client_to_server_tx: None, // Initialize as None
+            single_player: true,
         }
     }
 }
@@ -228,6 +230,7 @@ impl TemplateApp {
                 ui.add_space(50.0);
 
                 if ui.button(RichText::new("Start Game").size(20.0)).clicked() {
+                    self.single_player = true;
                     self.game_state = GameState::WorldSelection;
                 }
 
@@ -237,12 +240,13 @@ impl TemplateApp {
                     .button(RichText::new("Join Online Game").size(20.0))
                     .clicked()
                 {
+                    self.single_player = false;
                     // Parse the endpoint address
                     match self.multiplayer_endpoint_input.parse::<EndpointId>() {
                         Ok(addr) => {
                             self.start_client(addr);
 
-                            self.game_state = GameState::Playing;
+                            self.game_state = GameState::CharacterSelection;
                         }
                         Err(e) => {
                             self.game_state = GameState::MainMenu;
@@ -311,6 +315,11 @@ impl TemplateApp {
                 }
 
                 ui.add_space(20.0);
+
+                // Back button
+                if ui.button(RichText::new("Back").size(16.0)).clicked() {
+                    self.game_state = GameState::MainMenu;
+                }
             });
         });
     }
@@ -344,30 +353,19 @@ impl TemplateApp {
 
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
-                        .show(ui, |ui| {
-                            for world_path in world_files {
-                                if let Some(filename) = world_path.file_stem() {
-                                    if let Some(name) = filename.to_str() {
-                                        if ui.button(RichText::new(name).size(18.0)).clicked() {
-                                            // Load the world here
-                                            if let Ok(world) =
-                                                GameWorld::load_from_file(&world_path)
-                                            {
-                                                self.start_server(world);
-
-                                                let eid =
-                                                    self.router.as_ref().unwrap().endpoint().id();
-                                                self.start_client(eid);
-                                                self.game_state = GameState::CharacterSelection;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        });
+                        .show(ui, |ui| {});
                 }
 
                 ui.add_space(20.0);
+
+                // Back button
+                if ui.button(RichText::new("Back").size(16.0)).clicked() {
+                    if self.single_player {
+                        self.game_state = GameState::WorldSelection;
+                    } else {
+                        self.game_state = GameState::MainMenu;
+                    }
+                }
             });
         });
     }
@@ -470,7 +468,7 @@ impl TemplateApp {
 
                 // Back button
                 if ui.button(RichText::new("Back").size(16.0)).clicked() {
-                    self.game_state = GameState::WorldSelection;
+                    self.game_state = GameState::CharacterSelection;
                 }
             });
         });
