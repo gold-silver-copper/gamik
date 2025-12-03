@@ -13,13 +13,11 @@ pub struct TemplateApp {
     grid_cols: usize,
     grid_rows: usize,
     button_size: Option<f32>,
+    menu_input_string: String,
 
-    multiplayer_endpoint_input: String,
     world: GameWorld,
     font_size: f32,
     router: Option<Router>,
-    world_name_input: String, // Add this field
-    character_name_input: String,
     // Networking state
     server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
     client_to_server_tx: Option<mpsc::UnboundedSender<GameCommand>>, // New field
@@ -38,14 +36,12 @@ enum GameState {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            multiplayer_endpoint_input: String::new(),
+            menu_input_string: String::new(),
             router: None,
             game_state: GameState::MainMenu,
             player_id: EntityID(0),
             grid_cols: 1,
             grid_rows: 1,
-            character_name_input: String::new(),
-            world_name_input: String::new(), // Add this
             button_size: None,
             world: GameWorld::create_test_world("default".into()),
             font_size: 13.0,
@@ -105,7 +101,7 @@ impl TemplateApp {
         // Apply the fonts to the context
         cc.egui_ctx.set_fonts(fonts);
 
-        let mut app = Self::default();
+        let app = Self::default();
 
         // Start the networking
 
@@ -125,7 +121,7 @@ impl TemplateApp {
         self.client_to_server_tx = Some(event_tx);
 
         tokio::spawn(async move {
-            run_client_internal(s_addr, msg_tx, event_rx).await;
+            let _ = run_client_internal(s_addr, msg_tx, event_rx).await;
         });
     }
     fn start_server(&mut self, world: GameWorld) {
@@ -249,13 +245,13 @@ impl TemplateApp {
                 {
                     self.single_player = false;
                     // Parse the endpoint address
-                    match self.multiplayer_endpoint_input.parse::<EndpointId>() {
+                    match self.menu_input_string.parse::<EndpointId>() {
                         Ok(addr) => {
                             self.start_client(addr);
-
+                            self.menu_input_string.clear();
                             self.game_state = GameState::CharacterSelection;
                         }
-                        Err(e) => {
+                        Err(_) => {
                             self.game_state = GameState::MainMenu;
                         }
                     }
@@ -264,7 +260,7 @@ impl TemplateApp {
                 ui.add_space(20.0);
 
                 ui.label("Enter Server ID:");
-                ui.text_edit_singleline(&mut self.multiplayer_endpoint_input);
+                ui.text_edit_singleline(&mut self.menu_input_string);
             });
         });
     }
@@ -404,7 +400,7 @@ impl TemplateApp {
 
                 // Add a local variable to store the world name input
                 // You'll need to add this field to TemplateApp: world_name_input: String
-                ui.text_edit_singleline(&mut self.world_name_input);
+                ui.text_edit_singleline(&mut self.menu_input_string);
 
                 ui.add_space(20.0);
 
@@ -413,20 +409,20 @@ impl TemplateApp {
                     .button(RichText::new("Create Test World").size(20.0))
                     .clicked()
                 {
-                    let world_name = if self.world_name_input.trim().is_empty() {
+                    let world_name = if self.menu_input_string.trim().is_empty() {
                         // Generate a default name with timestamp
                         format!("world_{}", "lol")
                     } else {
-                        self.world_name_input.trim().to_string()
+                        self.menu_input_string.trim().to_string()
                     };
-
+                    self.menu_input_string.clear();
                     // Create and save the world
                     let new_world = GameWorld::create_test_world(world_name.clone());
                     match new_world.save_to_file() {
                         Ok(_) => {
                             println!("World '{}' created successfully!", world_name);
                             // Clear the input
-                            self.world_name_input.clear();
+                            self.menu_input_string.clear();
                             // Return to world selection
                             self.game_state = GameState::WorldSelection;
                         }
@@ -460,7 +456,7 @@ impl TemplateApp {
 
                 // Add a local variable to store the world name input
                 // You'll need to add this field to TemplateApp: world_name_input: String
-                ui.text_edit_singleline(&mut self.character_name_input);
+                ui.text_edit_singleline(&mut self.menu_input_string);
 
                 ui.add_space(20.0);
 
@@ -469,13 +465,13 @@ impl TemplateApp {
                     .button(RichText::new("Create New Character").size(20.0))
                     .clicked()
                 {
-                    let char_name = if self.character_name_input.trim().is_empty() {
+                    let char_name = if self.menu_input_string.trim().is_empty() {
                         // Generate a default name with timestamp
                         format!("John")
                     } else {
-                        self.character_name_input.trim().to_string()
+                        self.menu_input_string.trim().to_string()
                     };
-
+                    self.menu_input_string.clear();
                     if let Some(tx) = &self.client_to_server_tx {
                         if let Err(e) = tx.send(GameCommand::SpawnPlayer(char_name)) {
                             eprintln!("Failed to send game event: {}", e);
