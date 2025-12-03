@@ -590,7 +590,7 @@ impl TemplateApp {
 
             // Calculate maximum number of buttons that can fit
             let max_cols = ((available_width) / button_size).floor() as usize;
-            let max_rows = ((available_height) / button_size).floor() as usize;
+            let max_rows = ((available_height) / (button_size * 1.2)).floor() as usize;
 
             // Use all available space
             self.grid_cols = max_cols.max(1);
