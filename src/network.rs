@@ -197,10 +197,20 @@ impl ProtocolHandler for Echo {
                                     ClientMessage::GameMessage(gmsg) => {
                                         // Lock only when needed, and add event to queue
                                         let mut world_guard = world.lock().await;
-                                        if let Some(pid) =
-                                            world_guard.endpoints.get(&endpoint_id).cloned()
-                                        {
-                                            world_guard.event_queue.push((pid, gmsg));
+
+                                        match gmsg {
+                                            GameCommand::SpawnPlayer(name) => {
+                                                let pid = world_guard.spawn_player(name);
+                                                world_guard.endpoints.insert(endpoint_id, pid);
+                                            }
+
+                                            _ => {
+                                                if let Some(pid) =
+                                                    world_guard.endpoints.get(&endpoint_id).cloned()
+                                                {
+                                                    world_guard.event_queue.push((pid, gmsg));
+                                                }
+                                            }
                                         }
 
                                         // Don't process events here - let the periodic task handle it

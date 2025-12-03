@@ -209,7 +209,7 @@ impl GameWorld {
                     self.move_entity(eid, direction);
                 }
                 GameCommand::SpawnPlayer(name) => {
-                    self.spawn_player(name);
+                    // Do nothing here this is covered in the networking code
                 }
             }
         }
