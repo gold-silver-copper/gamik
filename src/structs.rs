@@ -74,6 +74,9 @@ pub enum BodyAccesory {
 pub enum BodyPart {
     Ear(BodySide),
     Lip(BodyVertical),
+    Arm(BodySide),
+    Hand(BodySide),
+    Leg(BodySide),
 }
 pub enum BodySide {
     Left,
@@ -86,8 +89,18 @@ pub enum BodyVertical {
 pub enum SkinColor {
     Bronze,
 }
+pub enum EyeColor {
+    Hazel,
+    Gray,
+}
+pub enum HairColor {
+    Brunette,
+}
+
 pub struct HumanBody {
     skin_color: SkinColor,
+    hair_color: HairColor,
+    eye_color: EyeColor,
     body_mods: Vec<BodyMod>,
 }
 
