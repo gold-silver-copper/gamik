@@ -1,12 +1,4 @@
-use crate::ServerMessage;
 use bincode::{Decode, Encode};
-use egui::ahash::HashMapExt;
-use iroh::EndpointId;
-use rustc_hash::FxHashMap;
-use rustc_hash::FxHashSet;
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Human {
@@ -38,11 +30,92 @@ pub enum BodyAccesory {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum BodyPart {
+    // ========== HEAD ==========
+    Scalp,
+    Forehead,
+    Temple(BodySide),
+    Eyebrow(BodySide),
+    Eyelid(BodyVertical), // Upper / Lower
+    Eye(BodySide),
     Ear(BodySide),
-    Lip(BodyVertical),
-    Arm(BodySide),
+    Cheek(BodySide),
+    Nose,
+    Nostril(BodySide),
+    Lip(BodyVertical), // Upper / Lower
+    Teeth,             // general
+    Tongue,
+    Jaw,
+    Chin,
+
+    // ========== NECK ==========
+    Throat,
+    Nape, // back of neck
+    NeckSide(BodySide),
+
+    // ========== TORSO (FRONT) ==========
+    Chest,
+    Breast(BodySide),
+    Sternum,
+    Abdomen,
+    Navel,
+    Pelvis,
+
+    // ========== TORSO (BACK) ==========
+    UpperBack,
+    LowerBack,
+    ShoulderBlade(BodySide),
+    Spine,
+
+    // ========== TORSO (SIDES) ==========
+    Rib(BodySide),
+    Waist(BodySide),
+
+    // ========== ARMS ==========
+    Shoulder(BodySide),
+    UpperArm(BodySide),
+    Elbow(BodySide),
+    Forearm(BodySide),
+    Wrist(BodySide),
+
+    // Hands (detailed)
     Hand(BodySide),
-    Leg(BodySide),
+    Palm(BodySide),
+    BackOfHand(BodySide),
+    Thumb(BodySide),
+    Finger(BodySide, FingerType), // new
+    Knuckle(BodySide, FingerType),
+
+    // ========== LEGS ==========
+    Hip(BodySide),
+    Thigh(BodySide),
+    Knee(BodySide),
+    Shin(BodySide),
+    Calf(BodySide),
+    Ankle(BodySide),
+
+    // Feet (detailed)
+    Foot(BodySide),
+    Heel(BodySide),
+    Sole(BodySide),
+    TopOfFoot(BodySide),
+    Toe(BodySide, ToeType), // new
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum FingerType {
+    Thumb,
+    Index,
+    Middle,
+    Ring,
+    Pinky,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum ToeType {
+    Big,
+    Second,
+    Middle,
+    Fourth,
+    Little,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
