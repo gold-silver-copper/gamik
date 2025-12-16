@@ -1,6 +1,6 @@
 use crate::structs::*;
 
-use bincode::{Decode, Encode};
+use bitcode::{Decode, Encode};
 use iroh::{
     Endpoint, EndpointAddr, EndpointId,
     endpoint::Connection,
@@ -41,8 +41,7 @@ pub enum Message {
 async fn send_one_way(conn: &Connection, msg: &Message) -> Result<()> {
     let mut send = conn.open_uni().await.anyerr()?;
 
-    let encoded = bincode::encode_to_vec(msg, bincode::config::standard())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let encoded = bitcode::encode(msg);
 
     send.write_all(&encoded).await.anyerr()?;
     send.finish().anyerr()?;
@@ -54,8 +53,7 @@ async fn send_one_way(conn: &Connection, msg: &Message) -> Result<()> {
 async fn recv_one_way(mut recv: iroh::endpoint::RecvStream) -> Result<Message> {
     let bytes = recv.read_to_end(MAX_MESSAGE_SIZE).await.anyerr()?;
 
-    let (msg, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let msg = bitcode::decode(&bytes).unwrap();
 
     Ok(msg)
 }

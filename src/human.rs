@@ -1,4 +1,4 @@
-use bincode::{Decode, Encode};
+use bitcode::{Decode, Encode};
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Human {

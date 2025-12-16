@@ -1,6 +1,6 @@
 use crate::ServerMessage;
 use crate::human::*;
-use bincode::{Decode, Encode};
+use bitcode::{Decode, Encode};
 use egui::ahash::HashMapExt;
 use iroh::EndpointId;
 use rustc_hash::FxHashMap;
@@ -119,8 +119,7 @@ impl GameWorld {
         };
 
         // Serialize to bytes
-        let encoded = bincode::encode_to_vec(&serializable, bincode::config::standard())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let encoded = bitcode::encode(&serializable);
 
         // Write to file
         fs::write(&file_path, encoded)?;
@@ -135,9 +134,7 @@ impl GameWorld {
         let bytes = fs::read(file_path)?;
 
         // Deserialize
-        let (serializable, _): (SerializableGameWorld, usize) =
-            bincode::decode_from_slice(&bytes, bincode::config::standard())
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let serializable: SerializableGameWorld = bitcode::decode(&bytes).unwrap();
 
         // Reconstruct GameWorld
         Ok(GameWorld {
