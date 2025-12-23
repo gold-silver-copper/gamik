@@ -57,7 +57,7 @@ impl Default for TemplateApp {
             grid_rows: 1,
             button_size: None,
             world: GameWorld::create_test_world("default".into()),
-            font_size: 16.0,
+            font_size: 12.0,
             server_to_client_rx: None,
             client_to_server_tx: None,
             single_player: true,
