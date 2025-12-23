@@ -1,6 +1,7 @@
 use crate::ServerMessage;
 use crate::human::*;
 use bitcode::{Decode, Encode};
+use egui::Color32;
 use egui::ahash::HashMapExt;
 use iroh::EndpointId;
 use rustc_hash::FxHashMap;
@@ -13,6 +14,12 @@ pub type EndpointMap = FxHashMap<EndpointId, EntityID>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct EntityID(pub u32);
+
+pub struct GraphicsTriple {
+    pub character: &'static str,
+    pub fg_color: Color32,
+    pub bg_color: Color32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct EntityGenerator(u32);
@@ -247,15 +254,27 @@ impl GameWorld {
         }
     }
 
-    pub fn get_display_char(&self, point: &Point) -> &str {
+    pub fn get_graphics_triple(&self, point: &Point) -> GraphicsTriple {
         for entity in self.entities.values() {
             if entity.position == *point {
                 return match &entity.entity_type {
-                    EntityType::Player => "@",
-                    EntityType::Tree => "木",
+                    EntityType::Player => GraphicsTriple {
+                        character: "@",
+                        fg_color: Color32::WHITE,
+                        bg_color: Color32::BLACK,
+                    },
+                    EntityType::Tree => GraphicsTriple {
+                        character: "木",
+                        fg_color: Color32::DARK_GREEN,
+                        bg_color: Color32::BLACK,
+                    },
                 };
             }
         }
-        "."
+        GraphicsTriple {
+            character: ".",
+            fg_color: Color32::WHITE,
+            bg_color: Color32::BLACK,
+        }
     }
 }

@@ -1,6 +1,8 @@
 use crate::structs::*;
 
 use crate::network::*;
+use egui::Color32;
+use egui::Stroke;
 use egui::{FontId, RichText};
 use iroh::EndpointAddr;
 use iroh::EndpointId;
@@ -622,16 +624,17 @@ impl TemplateApp {
                                 };
 
                                 // Get the character to display at this position
-                                let button_text = self.world.get_display_char(&point);
+                                let graphics_triple = self.world.get_graphics_triple(&point);
 
                                 let button = egui::Button::new(
-                                    RichText::new(button_text)
+                                    RichText::new(graphics_triple.character)
+                                        .color(graphics_triple.fg_color)
                                         .font(FontId::proportional(self.font_size)),
                                 )
                                 .min_size(egui::vec2(button_size, button_size))
                                 .small()
-                                .corner_radius(0.0);
-
+                                .corner_radius(0.0)
+                                .fill(graphics_triple.bg_color);
                                 if ui.add(button).clicked() {
                                     println!(
                                         "Button clicked at world position: x: {}, y: {}",
