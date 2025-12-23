@@ -19,6 +19,7 @@ pub struct GraphicsTriple {
     pub character: &'static str,
     pub fg_color: Color32,
     pub bg_color: Color32,
+    pub size_mod: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
@@ -262,11 +263,13 @@ impl GameWorld {
                         character: "@",
                         fg_color: Color32::WHITE,
                         bg_color: Color32::BLACK,
+                        size_mod: 1.0,
                     },
                     EntityType::Tree => GraphicsTriple {
                         character: "木",
                         fg_color: Color32::DARK_GREEN,
                         bg_color: Color32::BLACK,
+                        size_mod: 1.0,
                     },
                 };
             }
@@ -275,6 +278,7 @@ impl GameWorld {
             character: ".",
             fg_color: Color32::WHITE,
             bg_color: Color32::BLACK,
+            size_mod: 2.0,
         }
     }
 }

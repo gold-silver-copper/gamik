@@ -1,8 +1,6 @@
 use crate::structs::*;
 
 use crate::network::*;
-use egui::Color32;
-use egui::Stroke;
 use egui::{FontId, RichText};
 use iroh::EndpointAddr;
 use iroh::EndpointId;
@@ -59,7 +57,7 @@ impl Default for TemplateApp {
             grid_rows: 1,
             button_size: None,
             world: GameWorld::create_test_world("default".into()),
-            font_size: 13.0,
+            font_size: 16.0,
             server_to_client_rx: None,
             client_to_server_tx: None,
             single_player: true,
@@ -265,10 +263,10 @@ impl eframe::App for TemplateApp {
                 self.input(ctx);
 
                 // Right sidebar
-                self.right_panel(ctx);
+                //    self.right_panel(ctx);
 
                 // Bottom bar
-                self.bottom_panel(ctx);
+                // self.bottom_panel(ctx);
 
                 // Central panel with letter grid
                 self.rogue_screen(ctx);
@@ -602,7 +600,7 @@ impl TemplateApp {
     }
 
     fn rogue_screen(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::TopBottomPanel::top("lol").show(ctx, |ui| {
             // Customize button styling for tighter spacing
             let style = ui.style_mut();
             style.spacing.button_padding = egui::vec2(0.0, 0.0);
@@ -628,20 +626,20 @@ impl TemplateApp {
                 let letter_size = letter_width.max(letter_height);
 
                 // Minimal padding for tight roguelike feel
-                let padding = -4.0;
+                let padding = 0.0;
                 self.button_size = Some(letter_size + padding);
             }
 
             let button_size = self.button_size.unwrap();
 
             // Calculate available space (use max_rect instead of available_size for accuracy)
-            let available_rect = ui.max_rect();
+            let available_rect = ui.ctx().content_rect();
             let available_width = available_rect.width();
             let available_height = available_rect.height();
 
             // Calculate maximum number of buttons that can fit
             let max_cols = ((available_width) / button_size).floor() as usize;
-            let max_rows = ((available_height) / (button_size * 1.2)).floor() as usize;
+            let max_rows = ((available_height) / button_size).floor() as usize;
 
             // Use all available space
             self.grid_cols = max_cols.max(1);
@@ -682,10 +680,12 @@ impl TemplateApp {
                                 let button = egui::Button::new(
                                     RichText::new(graphics_triple.character)
                                         .color(graphics_triple.fg_color)
-                                        .font(FontId::proportional(self.font_size)),
+                                        .font(FontId::proportional(
+                                            self.font_size / graphics_triple.size_mod,
+                                        )),
                                 )
                                 .min_size(egui::vec2(button_size, button_size))
-                                .small()
+                                //                                .small()
                                 .corner_radius(0.0)
                                 .fill(graphics_triple.bg_color);
                                 if ui.add(button).clicked() {
