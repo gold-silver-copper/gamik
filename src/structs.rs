@@ -66,6 +66,15 @@ pub enum EntityType {
     Tree,
 }
 
+impl EntityType {
+    pub fn blocks_sight(&self) -> bool {
+        match self {
+            EntityType::Player => false,
+            EntityType::Tree => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Entity {
     pub position: Point,
