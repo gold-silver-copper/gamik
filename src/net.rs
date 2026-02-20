@@ -189,8 +189,6 @@ impl Echo {
 
 impl ProtocolHandler for Echo {
     async fn accept(&self, connection: Connection) -> std::result::Result<(), AcceptError> {
-        let endpoint_id = connection.remote_id();
-
         let state = self.state.clone();
 
         let conn_clone = connection.clone();
@@ -290,7 +288,6 @@ impl ProtocolHandler for Echo {
             }
         }
 
-        let _ = endpoint_id;
         Ok(())
     }
 }

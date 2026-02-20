@@ -376,17 +376,16 @@ mod tests {
     }
 
     #[test]
-    fn move_at_zero_saturates_left_but_not_up() {
+    fn move_allows_negative_coordinates() {
         let mut state = empty_state();
         let id = spawn_player(&mut state, "P".into());
         // Place entity at origin
         state.entities.get_mut(&id).expect("just spawned").position = Point { x: 0, y: 0 };
 
-        // saturating_sub on i32 clamps at i32::MIN, so y goes to -1
+        // i32::saturating_sub(1) allows going below zero (saturates at i32::MIN)
         move_entity(&mut state, id, Direction::Up);
         assert_eq!(state.entities[&id].position, Point { x: 0, y: -1 });
 
-        // x uses saturating_sub(1) which also goes negative for i32
         state.entities.get_mut(&id).expect("exists").position = Point { x: 0, y: 0 };
         move_entity(&mut state, id, Direction::Left);
         assert_eq!(state.entities[&id].position, Point { x: -1, y: 0 });
