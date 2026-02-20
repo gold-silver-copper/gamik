@@ -555,7 +555,7 @@ impl GamikApp {
             if self.button_size.is_none() {
                 let chinese_char = "中";
                 let font_id = egui::FontId::new(self.font_size, egui::FontFamily::Proportional);
-                let galley = ui.fonts_mut(|f| {
+                let char_galley = ui.fonts_mut(|f| {
                     f.layout_no_wrap(
                         chinese_char.to_string(),
                         font_id.clone(),
@@ -563,7 +563,7 @@ impl GamikApp {
                     )
                 });
 
-                let size = galley.size();
+                let size = char_galley.size();
                 self.button_size = Some(size.x.max(size.y));
             }
 
