@@ -1,6 +1,9 @@
-use crate::structs::*;
+//! Application shell — wires game, UI, and networking together.
 
-use crate::network::*;
+use crate::game::{self, Direction, EntityID, GameAction, GameState, Point};
+use crate::net::{Message, ServerMessage, run_client_internal, run_server_internal};
+use crate::ui;
+
 use egui::{FontId, RichText};
 use iroh::EndpointAddr;
 use iroh::EndpointId;
@@ -12,26 +15,9 @@ use tokio::sync::mpsc;
 // Toggle this constant to enable/disable test mode
 const TEST_MODE: bool = true;
 
-pub struct TemplateApp {
-    player_id: EntityID,
-    button_size: Option<f32>,
-    menu_input_string: String,
-
-    world: GameWorld,
-    font_size: f32,
-    router: Option<Router>,
-    // Networking state
-    server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
-    client_to_server_tx: Option<mpsc::UnboundedSender<GameCommand>>,
-    game_state: GameState,
-    single_player: bool,
-
-    // Test mode field
-    test_mode_initialized: bool,
-}
-
+/// Which screen the application is currently showing.
 #[derive(Debug, Clone, PartialEq)]
-enum GameState {
+enum AppScreen {
     MainMenu,
     CharacterCreation,
     WorldCreation,
@@ -40,19 +26,37 @@ enum GameState {
     Playing,
 }
 
-impl Default for TemplateApp {
+pub struct GamikApp {
+    player_id: EntityID,
+    button_size: Option<f32>,
+    menu_input_string: String,
+
+    game: GameState,
+    font_size: f32,
+    router: Option<Router>,
+    // Networking state
+    server_to_client_rx: Option<mpsc::UnboundedReceiver<Message>>,
+    client_to_server_tx: Option<mpsc::UnboundedSender<GameAction>>,
+    screen: AppScreen,
+    single_player: bool,
+
+    // Test mode field
+    test_mode_initialized: bool,
+}
+
+impl Default for GamikApp {
     fn default() -> Self {
         Self {
             menu_input_string: String::new(),
             router: None,
-            game_state: if TEST_MODE {
-                GameState::Playing
+            screen: if TEST_MODE {
+                AppScreen::Playing
             } else {
-                GameState::MainMenu
+                AppScreen::MainMenu
             },
             player_id: EntityID(0),
             button_size: None,
-            world: GameWorld::create_test_world("default".into()),
+            game: GameState::create_test_world("default".into()),
             font_size: 14.0,
             server_to_client_rx: None,
             client_to_server_tx: None,
@@ -62,7 +66,7 @@ impl Default for TemplateApp {
     }
 }
 
-impl TemplateApp {
+impl GamikApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Include font files at compile time
@@ -131,31 +135,23 @@ impl TemplateApp {
         });
     }
 
-    fn start_server(&mut self, world: GameWorld) {
+    fn start_server(&mut self, game: GameState) {
         let (router_tx, mut router_rx) = mpsc::unbounded_channel();
 
         // Spawn an async task to start the server
         tokio::spawn(async move {
-            match run_server_internal(world).await {
+            match run_server_internal(game).await {
                 Ok(router) => {
-                    println!(
-                        "Server started successfully at {:#?}",
-                        router.endpoint().addr()
-                    );
                     // Send the router back to the main thread
                     let _ = router_tx.send(router);
                 }
-                Err(e) => eprintln!("Server error: {}", e),
+                Err(e) => eprintln!("Server error: {e}"),
             }
         });
 
         while self.router.is_none() {
-            // Try to receive the router (non-blocking)
-            // Note: This won't work immediately since the server starts asynchronously
-            // You'll need to poll for it in the update loop
             if let Ok(router) = router_rx.try_recv() {
                 self.router = Some(router);
-                println!("GOT ROUTER");
             }
         }
     }
@@ -165,16 +161,13 @@ impl TemplateApp {
             return;
         }
 
-        println!("Test mode: Initializing...");
-
         // Create or load a test world
         let test_world = get_world_files()
             .first()
-            .and_then(|path| GameWorld::load_from_file(path).ok())
+            .and_then(|path| game::load_from_file(path).ok())
             .unwrap_or_else(|| {
-                println!("Test mode: Creating new test world");
-                let world = GameWorld::create_test_world("test_world".into());
-                let _ = world.save_to_file();
+                let world = GameState::create_test_world("test_world".into());
+                let _ = game::save_to_file(&world);
                 world
             });
 
@@ -189,15 +182,14 @@ impl TemplateApp {
 
         // Spawn test player
         if let Some(tx) = &self.client_to_server_tx {
-            let _ = tx.send(GameCommand::SpawnPlayer("TestPlayer".to_string()));
+            let _ = tx.send(GameAction::SpawnPlayer("TestPlayer".to_string()));
         }
 
         self.test_mode_initialized = true;
-        println!("Test mode: Initialization complete!");
     }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for GamikApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Initialize test mode once
@@ -205,73 +197,61 @@ impl eframe::App for TemplateApp {
             self.initialize_test_mode();
         }
 
-        // Check for new message counts from server
-        if let Some(rx) = &mut self.server_to_client_rx {
-            while let Ok(msg) = rx.try_recv() {
-                match msg {
-                    Message::ServerMessage(smsg) => match smsg {
-                        ServerMessage::EntityMap(emap) => {
-                            for (eid, e) in emap.iter() {
-                                self.world.entities.insert(eid.clone(), e.clone());
-                            }
-                        }
-                        ServerMessage::PlayerID(pid) => self.player_id = pid,
-                    },
-
-                    _ => {}
-                }
-            }
-        }
+        // Poll network → update local game state copy
+        self.poll_network();
 
         // Request continuous repainting to keep UI responsive
         ctx.request_repaint();
 
-        match self.game_state {
-            GameState::MainMenu => {
+        match self.screen {
+            AppScreen::MainMenu => {
                 self.show_main_menu(ctx);
             }
-
-            GameState::CharacterCreation => {
+            AppScreen::CharacterCreation => {
                 self.show_character_creation_menu(ctx);
             }
-            GameState::WorldCreation => {
+            AppScreen::WorldCreation => {
                 self.show_world_creation_menu(ctx);
             }
-            GameState::CharacterSelection => {
+            AppScreen::CharacterSelection => {
                 self.show_character_selection_menu(ctx);
             }
-            GameState::WorldSelection => {
+            AppScreen::WorldSelection => {
                 self.show_world_selection_menu(ctx);
             }
-            GameState::Playing => {
-                // Check for new message counts from server
-                if let Some(rx) = &mut self.server_to_client_rx {
-                    while let Ok(smsg) = rx.try_recv() {
-                        if let Message::ServerMessage(ServerMessage::EntityMap(emap)) = smsg {
-                            for (eid, e) in emap.iter() {
-                                self.world.entities.insert(eid.clone(), e.clone());
-                            }
-                        }
-                    }
-                }
-
-                // Handle keyboard input
+            AppScreen::Playing => {
+                // Collect input → game actions
                 self.input(ctx);
 
-                // Right sidebar
-                //    self.right_panel(ctx);
-
-                // Bottom bar
-                // self.bottom_panel(ctx);
-
-                // Central panel with letter grid
+                // Render
                 self.rogue_screen(ctx);
             }
         }
     }
 }
 
-impl TemplateApp {
+// ---------------------------------------------------------------------------
+// Menu screens
+// ---------------------------------------------------------------------------
+
+impl GamikApp {
+    /// Drain all pending network messages into local game state.
+    fn poll_network(&mut self) {
+        let Some(rx) = &mut self.server_to_client_rx else {
+            return;
+        };
+        while let Ok(msg) = rx.try_recv() {
+            if let Message::Server(smsg) = msg {
+                match smsg {
+                    ServerMessage::EntityMap(emap) => {
+                        self.game.entities = emap;
+                    }
+                    ServerMessage::PlayerID(pid) => self.player_id = pid,
+                }
+            }
+        }
+    }
+
     fn show_main_menu(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -283,7 +263,7 @@ impl TemplateApp {
 
                 if ui.button(RichText::new("Start Game").size(20.0)).clicked() {
                     self.single_player = true;
-                    self.game_state = GameState::WorldSelection;
+                    self.screen = AppScreen::WorldSelection;
                 }
 
                 ui.add_space(20.0);
@@ -298,10 +278,10 @@ impl TemplateApp {
                         Ok(addr) => {
                             self.start_client(addr);
                             self.menu_input_string.clear();
-                            self.game_state = GameState::CharacterSelection;
+                            self.screen = AppScreen::CharacterSelection;
                         }
                         Err(_) => {
-                            self.game_state = GameState::MainMenu;
+                            self.screen = AppScreen::MainMenu;
                         }
                     }
                 }
@@ -327,7 +307,7 @@ impl TemplateApp {
                     .button(RichText::new("Create New World").size(20.0))
                     .clicked()
                 {
-                    self.game_state = GameState::WorldCreation;
+                    self.screen = AppScreen::WorldCreation;
                 }
 
                 ui.add_space(30.0);
@@ -349,15 +329,13 @@ impl TemplateApp {
                                     if let Some(name) = filename.to_str() {
                                         if ui.button(RichText::new(name).size(18.0)).clicked() {
                                             // Load the world here
-                                            if let Ok(world) =
-                                                GameWorld::load_from_file(&world_path)
-                                            {
+                                            if let Ok(world) = game::load_from_file(&world_path) {
                                                 self.start_server(world);
 
                                                 let eid =
                                                     self.router.as_ref().unwrap().endpoint().addr();
                                                 self.start_client(eid);
-                                                self.game_state = GameState::CharacterSelection;
+                                                self.screen = AppScreen::CharacterSelection;
                                             }
                                         }
                                     }
@@ -370,7 +348,7 @@ impl TemplateApp {
 
                 // Back button
                 if ui.button(RichText::new("Back").size(16.0)).clicked() {
-                    self.game_state = GameState::MainMenu;
+                    self.screen = AppScreen::MainMenu;
                 }
             });
         });
@@ -389,12 +367,12 @@ impl TemplateApp {
                     .button(RichText::new("Create New Character").size(20.0))
                     .clicked()
                 {
-                    self.game_state = GameState::CharacterCreation;
+                    self.screen = AppScreen::CharacterCreation;
                 }
 
                 ui.add_space(30.0);
 
-                let playables = self.world.get_playable_entities();
+                let playables = self.game.get_playable_entities();
 
                 if playables.is_empty() {
                     ui.label("No existing characters found");
@@ -407,14 +385,14 @@ impl TemplateApp {
                         .show(ui, |ui| {
                             for playable in playables {
                                 if ui
-                                    .button(RichText::new(format!("{:#?}", playable)).size(18.0))
+                                    .button(RichText::new(format!("{playable:#?}")).size(18.0))
                                     .clicked()
                                 {
                                     if let Some(tx) = &self.client_to_server_tx {
-                                        if let Err(e) = tx.send(GameCommand::SpawnAs(playable)) {
-                                            eprintln!("Failed to send game event: {}", e);
+                                        if let Err(e) = tx.send(GameAction::SpawnAs(playable)) {
+                                            eprintln!("Failed to send game event: {e}");
                                         } else {
-                                            self.game_state = GameState::Playing;
+                                            self.screen = AppScreen::Playing;
                                         }
                                     }
                                 }
@@ -427,9 +405,9 @@ impl TemplateApp {
                 // Back button
                 if ui.button(RichText::new("Back").size(16.0)).clicked() {
                     if self.single_player {
-                        self.game_state = GameState::WorldSelection;
+                        self.screen = AppScreen::WorldSelection;
                     } else {
-                        self.game_state = GameState::MainMenu;
+                        self.screen = AppScreen::MainMenu;
                     }
                 }
             });
@@ -447,8 +425,6 @@ impl TemplateApp {
                 ui.label("Enter world name:");
                 ui.add_space(5.0);
 
-                // Add a local variable to store the world name input
-                // You'll need to add this field to TemplateApp: world_name_input: String
                 ui.text_edit_singleline(&mut self.menu_input_string);
 
                 ui.add_space(20.0);
@@ -459,24 +435,18 @@ impl TemplateApp {
                     .clicked()
                 {
                     let world_name = if self.menu_input_string.trim().is_empty() {
-                        // Generate a default name with timestamp
-                        format!("world_{}", "lol")
+                        "world_lol".to_string()
                     } else {
                         self.menu_input_string.trim().to_string()
                     };
                     self.menu_input_string.clear();
-                    // Create and save the world
-                    let new_world = GameWorld::create_test_world(world_name.clone());
-                    match new_world.save_to_file() {
-                        Ok(_) => {
-                            println!("World '{}' created successfully!", world_name);
-                            // Clear the input
-                            self.menu_input_string.clear();
-                            // Return to world selection
-                            self.game_state = GameState::WorldSelection;
+                    let new_world = GameState::create_test_world(world_name);
+                    match game::save_to_file(&new_world) {
+                        Ok(()) => {
+                            self.screen = AppScreen::WorldSelection;
                         }
                         Err(e) => {
-                            eprintln!("Failed to create world: {}", e);
+                            eprintln!("Failed to create world: {e}");
                         }
                     }
                 }
@@ -485,7 +455,7 @@ impl TemplateApp {
 
                 // Back button
                 if ui.button(RichText::new("Back").size(16.0)).clicked() {
-                    self.game_state = GameState::WorldSelection;
+                    self.screen = AppScreen::WorldSelection;
                 }
             });
         });
@@ -499,33 +469,30 @@ impl TemplateApp {
                 ui.heading("Character Creation");
                 ui.add_space(20.0);
 
-                // Text input for world name
+                // Text input for character name
                 ui.label("Enter Character name:");
                 ui.add_space(5.0);
 
-                // Add a local variable to store the world name input
-                // You'll need to add this field to TemplateApp: world_name_input: String
                 ui.text_edit_singleline(&mut self.menu_input_string);
 
                 ui.add_space(20.0);
 
-                // Create Test World button
+                // Create Character button
                 if ui
                     .button(RichText::new("Create New Character").size(20.0))
                     .clicked()
                 {
                     let char_name = if self.menu_input_string.trim().is_empty() {
-                        // Generate a default name with timestamp
-                        format!("John")
+                        "John".to_string()
                     } else {
                         self.menu_input_string.trim().to_string()
                     };
                     self.menu_input_string.clear();
                     if let Some(tx) = &self.client_to_server_tx {
-                        if let Err(e) = tx.send(GameCommand::SpawnPlayer(char_name)) {
-                            eprintln!("Failed to send game event: {}", e);
+                        if let Err(e) = tx.send(GameAction::SpawnPlayer(char_name)) {
+                            eprintln!("Failed to send game event: {e}");
                         } else {
-                            self.game_state = GameState::CharacterSelection;
+                            self.screen = AppScreen::CharacterSelection;
                         }
                     }
                 }
@@ -534,65 +501,45 @@ impl TemplateApp {
 
                 // Back button
                 if ui.button(RichText::new("Back").size(16.0)).clicked() {
-                    self.game_state = GameState::CharacterSelection;
+                    self.screen = AppScreen::CharacterSelection;
                 }
             });
         });
     }
+
+    // -----------------------------------------------------------------------
+    // Input
+    // -----------------------------------------------------------------------
+
     pub fn input(&mut self, ctx: &egui::Context) {
         let mut messages_to_send = Vec::new();
 
         ctx.input(|i| {
             if i.key_pressed(egui::Key::W) || i.key_pressed(egui::Key::ArrowUp) {
-                messages_to_send.push(GameCommand::Move(Direction::Up));
-            }
-
-            if i.key_pressed(egui::Key::Q) {
-                panic!();
+                messages_to_send.push(GameAction::Move(Direction::Up));
             }
 
             if i.key_pressed(egui::Key::S) || i.key_pressed(egui::Key::ArrowDown) {
-                messages_to_send.push(GameCommand::Move(Direction::Down));
+                messages_to_send.push(GameAction::Move(Direction::Down));
             }
             if i.key_pressed(egui::Key::A) || i.key_pressed(egui::Key::ArrowLeft) {
-                messages_to_send.push(GameCommand::Move(Direction::Left));
+                messages_to_send.push(GameAction::Move(Direction::Left));
             }
             if i.key_pressed(egui::Key::D) || i.key_pressed(egui::Key::ArrowRight) {
-                messages_to_send.push(GameCommand::Move(Direction::Right));
+                messages_to_send.push(GameAction::Move(Direction::Right));
             }
             if i.key_pressed(egui::Key::R) {
-                messages_to_send.push(GameCommand::SaveWorld);
+                messages_to_send.push(GameAction::SaveWorld);
             }
-        }); // Send all the collected messages
+        });
+        // Send all the collected messages
         if let Some(tx) = &self.client_to_server_tx {
             for event in messages_to_send {
                 if let Err(e) = tx.send(event) {
-                    eprintln!("Failed to send game event: {}", e);
+                    eprintln!("Failed to send game event: {e}");
                 }
             }
         }
-    }
-
-    pub fn right_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("right_panel")
-            .resizable(true)
-            .default_width(200.0)
-            .show(ctx, |ui| {
-                ui.heading("Right Sidebar");
-                ui.separator();
-                ui.label("Sidebar content here");
-            });
-    }
-
-    pub fn bottom_panel(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("bottom_panel")
-            .default_height(100.0)
-            .max_height(200.0)
-            .show(ctx, |ui| {
-                ui.heading("Bottom Bar");
-                ui.separator();
-                ui.label(format!("player_id: {:#?}", self.player_id));
-            });
     }
 
     fn rogue_screen(&mut self, ctx: &egui::Context) {
@@ -608,7 +555,7 @@ impl TemplateApp {
             if self.button_size.is_none() {
                 let chinese_char = "中";
                 let font_id = egui::FontId::new(self.font_size, egui::FontFamily::Proportional);
-                let letter_galley = ui.fonts_mut(|f| {
+                let char_galley = ui.fonts_mut(|f| {
                     f.layout_no_wrap(
                         chinese_char.to_string(),
                         font_id.clone(),
@@ -616,80 +563,55 @@ impl TemplateApp {
                     )
                 });
 
-                // Get letter dimensions - use the larger dimension to make square buttons
-                let letter_width = letter_galley.size().x;
-                let letter_height = letter_galley.size().y;
-                let letter_size = letter_width.max(letter_height);
-
-                // Minimal padding for tight roguelike feel
-                let padding = 0.0;
-                self.button_size = Some(letter_size + padding);
+                let size = char_galley.size();
+                self.button_size = Some(size.x.max(size.y));
             }
 
             let button_size = self.button_size.unwrap();
 
-            // Calculate available space (use max_rect instead of available_size for accuracy)
-            let available_rect = ui.ctx().content_rect();
-            let available_width = available_rect.width();
-            let available_height = available_rect.height();
+            // Calculate available space
+            let content = ui.ctx().content_rect();
+            let cols = ((content.width() / button_size) as usize).max(1);
+            let rows = ((content.height() / button_size) as usize).max(1);
 
-            // Calculate maximum number of buttons that can fit
-            let max_cols = ((available_width) / button_size) as usize;
-            let max_rows = ((available_height) / button_size) as usize;
+            // Camera centering
+            let center = self
+                .game
+                .entities
+                .get(&self.player_id)
+                .map_or(Point { x: 0, y: 0 }, |e| e.position);
 
-            // Use all available space
-            let max_cols = max_cols.max(1);
-            let max_rows = max_rows.max(1);
+            let cam_x = center.x - (cols as i32 / 2);
+            let cam_y = center.y - (rows as i32 / 2);
 
-            // Get player position for camera centering
-            let camera_center =
-                if let Some(player_entity) = self.world.entities.get(&self.player_id) {
-                    player_entity.position.clone()
-                } else {
-                    // Default to origin if player not found
-                    Point { x: 0, y: 0 }
-                };
-
-            // Calculate camera offset to center player on screen
-            let camera_offset_x = camera_center.x - (max_cols as i32 / 2);
-            let camera_offset_y = camera_center.y - (max_rows as i32 / 2);
-
-            // Set spacing to zero for the grid
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
-            // Center the grid
+            // Build spatial index once per frame for O(1) lookups
+            let index = ui::build_spatial_index(&self.game.entities);
+
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
-                    // Create the grid
-                    for row in 0..max_rows {
+                    for row in 0..rows {
                         ui.horizontal(|ui| {
-                            for col in 0..max_cols {
-                                // Calculate world position based on camera offset
+                            for col in 0..cols {
                                 let point = Point {
-                                    x: col as i32 + camera_offset_x,
-                                    y: row as i32 + camera_offset_y,
+                                    x: col as i32 + cam_x,
+                                    y: row as i32 + cam_y,
                                 };
 
-                                // Get the character to display at this position
-                                let graphics_triple = self.world.get_graphics_triple(&point);
+                                let glyph = ui::glyph_at(&index, &point);
 
                                 let button = egui::Button::new(
-                                    RichText::new(graphics_triple.character)
-                                        .color(graphics_triple.fg_color)
+                                    RichText::new(glyph.character)
+                                        .color(glyph.fg_color)
                                         .font(FontId::proportional(
-                                            self.font_size / graphics_triple.size_mod,
+                                            self.font_size / glyph.size_mod,
                                         )),
                                 )
                                 .min_size(egui::vec2(button_size, button_size))
-                                //                                .small()
                                 .corner_radius(0.0)
-                                .fill(graphics_triple.bg_color);
-                                if ui.add(button).clicked() {
-                                    println!(
-                                        "Button clicked at world position: x: {}, y: {}",
-                                        point.x, point.y
-                                    );
-                                }
+                                .fill(glyph.bg_color);
+                                ui.add(button);
                             }
                         });
                     }
@@ -698,7 +620,8 @@ impl TemplateApp {
         });
     }
 }
-/// Lists all available world files
+
+/// Lists all available world files.
 pub fn get_world_files() -> Vec<PathBuf> {
     let worlds_dir = PathBuf::from("worlds");
 
